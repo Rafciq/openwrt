@@ -1,0 +1,568 @@
+opengt
+	let $x="ndisup:"+$basename($dev())+" "
+	print $x+"Establishing 3G modem connection in NDIS mode\n"
+	print $x+"Script for comgt version 1.07 Rafal Drzymala 2012\n"
+#
+# Changelog
+#	1.00	RD	First stable code
+#	1.01	RD	Moved "Getting received signal strength" section
+#			Reset command changed from ATZ to ATZ0
+#			Changed wait time for establish connection from 20 to 30 secs
+#	1.02	RD	Changed signal level bar
+#	1.03	RD	Added support for SYSINFOEX modem command
+#	1.04	RD	Moved "Checking for password input request" section (frutis suggestion)
+#	1.05	RD	Reset command changed AT+CFUN=1 to AT+CFUN=1,1
+#			Corrected decode result of AT^SYSINFOEX modem command (frutis suggestion)
+#	1.06	RD	Improvements dialog with modem
+#			Changed waiting for establish connection rutine
+#			Changed waiting for restart modem
+#	1.07	RD	Improvements restart modem
+#			
+# Destination /etc/gcom/ndisup.gcom
+#
+# Modem succesfuly tested
+# - HUAWEI E173		11.126.85.00.209
+# Modem tested, not supported 
+# - HUAWEI E160G	11.608.02.02.55
+# - HUAWEI E160		11.604.09.00.00
+# - HUAWEI E220
+#
+	set com 115200n81
+	set ignorecase on
+	set comecho off
+	set senddelay 0.02
+
+	let $a=$env("APN")
+	if $a = "" let $a=$env("COMGTAPN")
+	if $a = "" print $x+"APN or COMGTAPN environment var not specified\n" goto finish	
+	let $m=$env("MODE")
+	let $p=$env("PINCODE")
+	if $p = "" let $p=$env("COMGTPIN")
+	let r1=1
+
+:start
+# Initializing communication with modem
+	if r1 = 1 print $x+"Try to communicate with modem\n"
+	if r1 > 1 print $x+"Again try to communicate with modem (",r1,")\n"
+	waitquiet 1 0.5
+	send "ATQ0; E0^m"
+	waitfor 1 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while setting modem (1)\n"
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while setting modem (1)\n"
+	if % = 3 print $x+"Command not supported (1)\n"
+	send "AT+CMEE=2^m"
+	waitfor 1 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while setting modem (2)\n"
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while setting modem (2)\n"
+	if % = 3 print $x+"Command not supported (2)\n"
+	send "AT\^CURC=0^m"
+	waitfor 1 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while setting modem (3)\n"
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while setting modem (3)\n"
+	if % = 3 print $x+"Command not supported (3)\n"
+
+# Checking for password input request
+	print $x+"Checking for password input request\n"
+	let u=0
+	send "AT+CPIN?^m"
+	waitfor 5 "+CPIN: ","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while checking for password input request\n" goto end_chkpin
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while checking for password input request\n" goto end_chkpin
+	if % = 3 print $x+"Command not supported\n" goto end_chkpin
+	get 1 "^m" $i1
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+	let $d="Unknown modem response ("+$i1+")"
+	if $i1 = "READY" let $d="MT without password input request"
+	if $i1 = "SIM PIN" let $d="UICC/SIM PIN password request"
+	if $i1 = "SIM PUK" let $d="UICC/SIM PUK password request, to unblock the SIM PIN which was blocked for 3 verification failure"
+	if $i1 = "SIM PIN2" let $d="PIN2 password request"
+	if $i1 = "SIM PUK2" let $d="PUK2 password request, to unblock the SIM PIN2 which was blocked for 3 verification failure"
+	if $i1 = "PH-SIM PIN" let $d="SIM lock (phone-to-SIM) is required"
+	if $i1 = "PH-NET PIN" let $d="Network personnalisation is required"
+	print $x+"- state: "+$d+"\n"
+	if $i1 = "SIM PIN" goto do_pin_unlock
+	if $i1 <> "READY" goto finish
+:end_chkpin
+
+# Unlock the PIN 
+	goto end_pin_unlock
+:do_pin_unlock
+	print $x+"UICC/SIM unlocking by PIN\n"
+	if $p = "" print $x+"PINCODE or COMGTPIN environment variable not specified\n" goto abort
+	send "AT+CPIN="+$p"^m"
+	waitfor 5 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while unlocking by PIN\n" goto abort
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while unlocking by PIN\n" goto abort
+	if % = 3 print $x+"Command not supported\n" goto abort
+	print $x+"UICC/SIM unlocked successfully\n"
+	let r2=0
+:wait_for_reg
+	let r2=r2+1
+	if r2>5 print $x+"Number of retries exhausted\n" goto abort
+	print $x+"Waiting for network registration (",r2,")\n"
+	send "AT+CGREG=0; +CGREG?^m"
+	waitfor 2 "+CGREG: ","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while getting network registration status\n" goto end_pin_unlock
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while getting network registration status\n" goto end_pin_unlock
+	if % = 3 print $x+"Command not supported\n" goto end_pin_unlock
+	get 1 "," $i1
+	if % != 0 goto comm_timeout
+	get 1 "^m" $i2
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+	let $i2=$left($i2,1)
+	let $d="Unknown modem response ("+$i2+")"
+	if $i2 = "0" goto wait_for_reg
+	if $i2 = "1" goto end_pin_unlock
+	if $i2 = "2" goto wait_for_reg
+	if $i2 = "3" let $d="Registration rejected"
+	if $i2 = "4" let $d="Unknown reasons"
+	if $i2 = "5" goto end_pin_unlock
+	print $x+"- error: "+$d+"\n"
+	goto abort
+:end_pin_unlock
+
+# Getting device information
+	print $x+"Getting device information\n"
+
+	send "AT+CGMI^m"
+	waitfor 1 "^m^j"
+	if % = -1 goto comm_timeout
+	get 1 "^m" $i1
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+
+	send "AT+CGMM^m"
+	waitfor 1 "^m^j"
+	if % = -1 goto comm_timeout
+	get 1 "^m" $i2
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+
+	send "AT+CGMR^m"
+	waitfor 1 "^m^j"
+	if % = -1 goto comm_timeout
+	get 1 "^m" $i3
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+
+	send "AT+CGSN^m"
+	waitfor 1 "^m^j"
+	if % = -1 goto comm_timeout
+	get 1 "^m" $i4
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+
+	print $x+"- modem: "+$toupper($i1)+" "+$toupper($i2)+"\n"
+	print $x+"- firmware: "+$i3+"\n"
+	print $x+"- IMEI: "+$i4+"\n"
+# 
+#	system "export IMEI_"+$basename($dev())+"=\""+$i4+"\""
+
+
+# Getting received signal strength
+	print $x+"Getting received signal strength\n"
+	send "AT+CSQ^m"
+	waitfor 5 "+CSQ: ","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while getting received signal strength\n" goto end_sigstr
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while getting received signal strength\n" goto end_sigstr
+	if % = 3 print $x+"Command not supported\n" goto end_sigstr
+	get 1 "," $i1
+	if % != 0 goto comm_timeout
+	get 1 "^m" $i2
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+	if $i1 = "99" print $x+"- signal strength: unknown\n" goto end_sigstr
+	let s1=val($i1)
+	let s2=(s1*2)-113 
+	let s3=((s1*100000)/31000)
+	print $x+"- signal strength: (",s1,"), ",s2," dBm, ",s3,"%\n"
+	let s3=s3/2
+	let $s3=$left("##################################################",s3)
+	let $s3=$s3+$right("----1----2----3----5----5----6----7----8----9----$",50-s3)
+	print $x+"- level: ["+$s3+"]\n"
+:end_sigstr
+
+# Checking modem for NDIS support
+	print $x+"Checking modem for NDIS support\n"
+	send "AT\^DIALMODE?^m" 
+	waitfor 5 "\^DIALMODE:","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 2 gosub cme_error 
+	if % > 0 print $x+"- This modem doesn't support NDIS mode\n" goto abort
+	get 1 "^m" $i1
+	if % != 0 goto comm_timeout
+	let $i1=$left($i1,1)
+	if $i1 = "1" goto ok_ndis_check
+	if $i1 = "2" goto ok_ndis_check
+	print $x+"- This modem doesn't support NDIS mode\n"
+	goto abort
+:ok_ndis_check
+	print $x+"- NDIS mode is supported by this modem\n"
+
+# Getting system information
+	print $x+"Getting system information\n"
+:do_sysinfoex
+	send "AT\^SYSINFOEX^m"
+	waitfor 5 "\^SYSINFOEX:","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 goto end_sysinfoex
+	if % = 2 gosub cme_error goto end_sysinfoex
+	if % = 3 goto end_sysinfoex
+	get 1 "," $i1
+	if % != 0 goto comm_timeout
+	get 1 "," $i2
+	if % != 0 goto comm_timeout
+	get 1 "," $i3
+	if % != 0 goto comm_timeout
+	get 1 "," $i4
+	if % != 0 goto comm_timeout
+	get 1 "," $i5
+	if % != 0 goto comm_timeout
+	get 1 "," $i6
+	if % != 0 goto comm_timeout
+	get 1 "," $i7
+	if % != 0 goto comm_timeout
+	get 1 "," $i8
+	if % != 0 goto comm_timeout
+	get 1 "^m" $i9
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+	let $d="Unknown modem response ("+$i1+")"
+	if $i1 = "0" let $d="No service"
+	if $i1 = "1" let $d="Restricted service"
+	if $i1 = "2" let $d="Valid service"
+	if $i1 = "3" let $d="Restricted regional service"
+	if $i1 = "4" let $d="Power-saving and deep sleep state"
+	print $x+"- service state: "+$d+"\n"
+	let $d="Unknown modem response ("+$i2+")"
+	if $i2 = "0" let $d="No service"
+	if $i2 = "1" let $d="Only CS service"
+	if $i2 = "2" let $d="Only PS service"
+	if $i2 = "3" let $d="PS+CS service"
+	if $i2 = "4" let $d="CS and PS not registered, searching"
+	print $x+"- domain: "+$d+"\n"	
+	let $d="Unknown modem response ("+$i3+")"
+	if $i3 = "0" let $d="Non roaming state"
+	if $i3 = "1" let $d="Roaming state"
+	print $x+"- roaming: "+$d+"\n"
+	let $d="Unknown modem response ("+$i4+")"
+	if $i4 = "0" let $d="Invalid USIM card state or pin code locked"
+	if $i4 = "1" let $d="Valid USIM card state"
+	if $i4 = "2" let $d="USIM is invalid in case of CS"
+	if $i4 = "3" let $d="USIM is invalid in case of PS"
+	if $i4 = "4" let $d="USIM is invalid in case of either CS or PS"
+	if $i4 = "240" let $d="ROMSIM"
+	if $i4 = "255" let $d="USIM card is not existent"
+	print $x+"- SIM: "+$d+"\n"
+	let $d="Unknown modem response ("+$i6+")"
+	if $i7 != "" let d$=$i7 let $i6=""
+	if $i6 = "0" let $d="No service"
+	if $i6 = "1" let $d="GSM"
+	if $i6 = "2" let $d="CDMA"
+	if $i6 = "3" let $d="WCDMA"
+	if $i6 = "4" let $d="TD-SCDMA"
+	if $i6 = "5" let $d="WIMAX"
+	if $i6 = "6" let $d="LTE"
+	print $x+"- mode: "+$d+"\n"
+	let $d="Unknown modem response ("+$i8+")"
+	if $i9 != "" let d$=$i9 let $i8=""
+	if $i8 = "0" let $d="No service"
+	if $i8 = "1" let $d="GSM"
+	if $i8 = "2" let $d="GPRS"
+	if $i8 = "3" let $d="EDGE"
+	if $i8 = "21" let $d="IS95A"
+	if $i8 = "22" let $d="IS95B"
+	if $i8 = "23" let $d="CDMA2000 1X"
+	if $i8 = "24" let $d="EVDO Rel0"
+	if $i8 = "25" let $d="EVDO RelA"
+	if $i8 = "26" let $d="EVDO RelB"
+	if $i8 = "27" let $d="HYBRID (CDMA2000 1X)"
+	if $i8 = "28" let $d="HYBRID (EVDO Rel0)"
+	if $i8 = "29" let $d="HYBRID (EVDO RelA)"
+	if $i8 = "30" let $d="HYBRID (EVDO RelB)"
+	if $i8 = "41" let $d="WCDMA"
+	if $i8 = "42" let $d="HSDPA"
+	if $i8 = "43" let $d="HSUPA"
+	if $i8 = "44" let $d="HSPA"
+	if $i8 = "45" let $d="HSPA+"
+	if $i8 = "46" let $d="DC-HSPA+"
+	if $i8 = "61" let $d="TD-SCDMA"
+	if $i8 = "62" let $d="HSDPA"
+	if $i8 = "63" let $d="HSUPA"
+	if $i8 = "64" let $d="HSPA"
+	if $i8 = "65" let $d="HSPA+"
+	if $i8 = "81" let $d="802.16e"
+	if $i8 = "101" let $d="LTE"
+	print $x+"- sub mode: "+$d+"\n"
+	# Invalid state do finish
+	if $i2 = "1" goto abort
+	if $i4 = "0" goto abort
+	if $i4 = "3" goto finish
+	if $i4 = "4" goto finish
+	if $i4 = "255" goto finish
+	# Invalid state do restart_modem
+	if $i1 = "0" goto restart_modem
+	if $i1 = "4" goto restart_modem
+	if $i2 = "0" goto restart_modem
+	if $i2 = "4" goto restart_modem
+	if $i6 = "0" goto restart_modem
+	goto end_sysinfo
+:end_sysinfoex
+
+:do_sysinfo
+	send "AT\^SYSINFO^m"
+	waitfor 5 "\^SYSINFO:","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while getting system information\n" goto end_sysinfo
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while getting system information\n" goto end_sysinfo
+	if % = 3 print $x+"Command not supported\n" goto end_sysinfo
+	get 1 "," $i1
+	if % != 0 goto comm_timeout
+	get 1 "," $i2
+	if % != 0 goto comm_timeout
+	get 1 "," $i3
+	if % != 0 goto comm_timeout
+	get 1 "," $i4
+	if % != 0 goto comm_timeout
+	get 1 "^m" $i5
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+	if len($i5)>3 let $i6=$right($i5,1)
+	let $i5=$left($i5,1)
+	let $d="Unknown modem response ("+$i1+")"
+	if $i1 = "0" let $d="No service"
+	if $i1 = "1" let $d="Restricted service"
+	if $i1 = "2" let $d="Valid service"
+	if $i1 = "3" let $d="Restricted regional service"
+	if $i1 = "4" let $d="Power-saving and deep sleep state"
+	print $x+"- service state: "+$d+"\n"
+	let $d="Unknown modem response ("+$i2+")"
+	if $i2 = "0" let $d="No service"
+	if $i2 = "1" let $d="Only CS service"
+	if $i2 = "2" let $d="Only PS service"
+	if $i2 = "3" let $d="PS+CS service"
+	if $i2 = "4" let $d="CS and PS not registered, searching"
+	print $x+"- domain: "+$d+"\n"	
+	let $d="Unknown modem response ("+$i3+")"
+	if $i3 = "0" let $d="Non roaming state"
+	if $i3 = "1" let $d="Roaming state"
+	print $x+"- roaming: "+$d+"\n"
+	let $d="Unknown modem response ("+$i4+")"
+	if $i4 = "0" let $d="No service"
+	if $i4 = "1" let $d="AMPS"
+	if $i4 = "2" let $d="CDMA"
+	if $i4 = "3" let $d="GSM/GPRS"
+	if $i4 = "4" let $d="HDR"
+	if $i4 = "5" let $d="WCDMA"
+	if $i4 = "6" let $d="GPS"
+	if $i4 = "7" let $d="GSM/WCDMA"
+	if $i4 = "8" let $d="CDMA/HDR HYBRID"
+	if $i4 = "15" let $d="TD-SCDMA"
+	print $x+"- mode: "+$d+"\n"
+	let $d="Unknown modem response ("+$i5+")"
+	if $i5 = "0" let $d="Invalid USIM card state or pin code locked"
+	if $i5 = "1" let $d="Valid USIM card state"
+	if $i5 = "2" let $d="USIM is invalid in case of CS"
+	if $i5 = "3" let $d="USIM is invalid in case of PS"
+	if $i5 = "4" let $d="USIM is invalid in case of either CS or PS"
+	if $i5 = "255" let $d="USIM card is not existent"
+	print $x+"- SIM: "+$d+"\n"
+	let $d="Unknown modem response ("+$i6+")"
+	if $i6 = "0" let $d="No service"
+	if $i6 = "1" let $d="GSM"
+	if $i6 = "2" let $d="GPRS"
+	if $i6 = "3" let $d="EDGE"
+	if $i6 = "4" let $d="WCDMA"
+	if $i6 = "5" let $d="HSDPA"
+	if $i6 = "6" let $d="HSUPA"
+	if $i6 = "7" let $d="HSDPA and HSUPA"
+	if $i6 = "8" let $d="TD_SCDMA"
+	if $i6 = "9" let $d="HSPA+"
+	if $i6 = "17" let $d="HSPA+(64QAM)"
+	if $i6 = "18" let $d="HSPA+(MIMO)"
+	print $x+"- sub mode: "+$d+"\n"
+	# Invalid state do finish
+	if $i2 = "1" goto abort
+	if $i5 = "0" goto abort
+	if $i5 = "3" goto finish
+	if $i5 = "4" goto finish
+	if $i5 = "255" goto finish
+	# Invalid state do restart_modem
+	if $i1 = "0" goto restart_modem
+	if $i1 = "4" goto restart_modem
+	if $i2 = "0" goto restart_modem
+	if $i2 = "4" goto restart_modem
+	if $i4 = "0" goto restart_modem
+:end_sysinfo
+
+# Getting network registration status
+	print $x+"Getting network registration status\n"
+	let $i2=""
+	send "AT+CGREG=2; +CGREG?^m"
+	waitfor 2 "+CGREG: ","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while getting network registration status\n" goto end_cgreg
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while getting network registration status\n" goto end_cgreg
+	if % = 3 print $x+"Command not supported\n" goto end_cgreg
+	get 1 "," $i1
+	if % != 0 goto comm_timeout
+	get 1 "^m" $i4
+	if % != 0 goto comm_timeout
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+	let $i2=$left($i4,1)
+	if len($i4)>2 let $i3=$mid($i4,2,len($i4)-2)
+	let $d="Unknown modem response ("+$i2+")"
+	if $i2 = "0" let $d="Not registered. The MS is not searching the new operators to be registered"
+	if $i2 = "1" let $d="Local network is registered"
+	if $i2 = "2" let $d="Not registered. But the MS is searching the new operators to be registered"
+	if $i2 = "3" let $d="Registration rejected"
+	if $i2 = "4" let $d="Unknown reasons"
+	if $i2 = "5" let $d="Roaming network is registered"
+	print $x+"- status: "+$d+"\n"
+	print $x+"- lac, ci: "+$i3+"\n"
+	send "AT+CGREG=0^m"
+	waitfor 1 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 2 gosub cme_error
+:end_cgreg
+
+# Disable CME error report
+	send "AT+CMEE=0^m"
+	waitfor 1 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while setting modem (4)\n"
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while setting modem (4)\n"
+	if % = 3 print $x+"Command not supported (4)\n"
+	
+# Verify if the modem is connected to APN
+	print $x+"Verify if the modem is connected to APN\n"
+	send "AT\^DHCP?^m"
+	waitfor 5 "\^DHCP:","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 0 print $x+"Modem is already connected\n" goto do_disconnect
+	if % = 2 gosub cme_error
+	if % = 3 print $x+"Command not supported\n" goto abort
+	print $x+"No connection detected\n"
+	goto end_disconnect
+:do_disconnect
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+
+# Disconnecting from current APN
+	print $x+"Disconnecting from current APN\n"
+	send "AT\^NDISDUP=1,0^m"
+	waitfor 5 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while disconnecting from current APN\n" goto abort
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while disconnecting from current APN\n" goto abort
+	if % = 3 print $x+"Command not supported\n" goto abort
+	print $x+"Disconnected successfully\n"
+:end_disconnect	
+
+# Setting mode
+	if $m = "" goto end_mode_set
+	print $x+"Setting mode "+$m+"\n"
+	send $m+"^m"
+	waitfor 5 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while setting mode error\n" goto abort
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while setting mode error\n" goto abort
+	if % = 3 print $x+"Command not supported\n" goto abort
+	print $x+"Mode set successfully\n"
+:end_mode_set
+
+# Establishing connection
+	print $x+"Try to establish connection via APN "+$a+"\n"
+	send "AT\^NDISDUP=1,1,\""+$a+"\"^m" 
+	waitfor 5 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while connecting\n" goto abort
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while connecting\n" goto abort
+	if % = 3 print $x+"Command not supported\n" goto abort
+	print $x+"Waiting for establish connection\n"
+	let r3 = 0
+:wait_for_connection	
+	let r3 = r3+1
+	if r3 > 45 goto restart_modem
+	if r3&3 = 3 print $x+"Still waiting ",r3-1," second(s)...\n"
+	if r3 > 1 waitquiet 10 1
+	send "AT\^DHCP?^m"
+	waitfor 5 "\^DHCP:","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 0 print $x+"Connection established\n" goto conn_established
+	if % = 1 goto wait_for_connection
+	if % = 2 gosub cme_error goto wait_for_connection
+	if % = 3 print $x+"Command not supported\n" goto abort
+:conn_established
+	waitfor 1 "OK^m^j"
+	if % = -1 goto comm_timeout
+	goto finish
+	
+# In case of normal exit
+:finish
+	print $x+"Done.\n"
+	exit 0
+
+# In case of occurred an error
+:abort
+	print $x+"Done!\n"
+	exit 1
+
+# Error CME routine
+:cme_error
+	get 1 "^m" $e
+	let $e="'"+$e+"'"
+	get 1 "^j" $t
+	return
+
+# Restarting modem and start all
+:restart_modem
+	let r1 = r1+1
+	if r1 > 5 print $x+"Number of restart retries was exhausted\n" goto restart_final
+	print $x+"Restarting modem\n"
+	waitquiet 2 2
+	send "AT\^NDISDUP=1,0^m"
+	waitquiet 2 1
+	send "ATZ0^m"
+	waitquiet 2 1
+	send "AT&F^m"
+	waitquiet 2 1
+	send "AT+CFUN=1^m"
+	waitquiet 2 1
+	let r3 = 0
+:restart_wait	
+	let r3 = r3+1
+	sleep 1
+	if r3&3 = 3 print $x+"Still waiting ",r3," second(s)...\n"
+	if r3 < 20 goto restart_wait
+	goto start
+:restart_final
+	waitquiet 2 1
+	send "AT+CFUN=1,1^m"
+	waitquiet 2 1
+	goto abort
+	
+# Timeout detected
+:comm_timeout
+	print $x+"Modem is not responding, timeout detected\n"
+	goto restart_modem
+# Done
