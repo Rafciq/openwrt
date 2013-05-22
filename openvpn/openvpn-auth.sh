@@ -18,6 +18,8 @@
 #
 # Remember you have to add 'auth-user-pass' option in client config file.
 #
+# Destination /bin/openvpn-auth.sh
+#
 if [ "$script_type" == "user-pass-verify" ]; then
 	local LARG=""
 	local PNAME=$(basename $0)
