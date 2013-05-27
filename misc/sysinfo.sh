@@ -11,6 +11,7 @@
 #	1.06	RD	Parametryzacja kolorów i pojawiania siê podkreœleñ
 #	1.07	RD	Modyfikacja zwi¹zana z poprawnym wyœwietlaniem interfejsu dla prot.3g
 #	1.08	RD	Modyfikacja wyœwietlania DNS-ów dla wan, dodanie uptime dla interfejsów
+#	1.09	RD	Dodanie statusu "Down" dla wy³¹czonego wifi, zmiana wyœwietlania dla WLAN(sta)
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -74,7 +75,7 @@ human_readable() {
 
 device_rx_tx() {
 	local RXTX=$(awk -v Device=$1 '$1==Device ":"{printf "%d\t%d",$2,$10}' /proc/net/dev)
-	[ "$RXTX" != "" ] && printf "rx/tx: $RXTXColor$(human_readable $(echo "$RXTX" | cut -f 1))$NormalColor/$RXTXColor$(human_readable $(echo "$RXTX" | cut -f 2))$NormalColor"
+	[ "$RXTX" != "" ] && printf ", rx/tx: $RXTXColor$(human_readable $(echo "$RXTX" | cut -f 1))$NormalColor/$RXTXColor$(human_readable $(echo "$RXTX" | cut -f 2))$NormalColor"
 }
 
 uptime_str() {
@@ -208,7 +209,7 @@ print_wan() {
 				if [ "$State" == "1" ]; then
 					[ "$IP4" != "" ] && print_line "WAN: $AddrColor$IP4$NormalColor($Iface), gateway: $AddrColor$Gateway4$NormalColor"
 					[ "$IP6" != "" ] && print_line "WAN: $AddrColor$IP6$NormalColor($Iface), gateway: $AddrColor$Gateway6$NormalColor"
-					print_line "proto: $ValueColor$Protocol$NormalColor, uptime: $ValueColor$(uptime_str $Uptime)$NormalColor, $(device_rx_tx $Iface)"
+					print_line "proto: $ValueColor$Protocol$NormalColor, uptime: $ValueColor$(uptime_str $Uptime)$NormalColor$(device_rx_tx $Iface)"
 					[ "$DNS" != "" ] && print_line "dns: $AddrColor$DNS$NormalColor"
 				fi
 			fi
@@ -266,6 +267,7 @@ print_wlan() {
 			local Mode=$(uci -q -P /var/state get wireless.$Iface.mode)
 			local Channel=$(uci -q get wireless.$Device.channel)
 			local RadioIface=$(uci -q -P /var/state get wireless.$Iface.ifname)
+			local Connection="Down"
 			if [ -n "$RadioIface" ]; then
 				if [ "$Mode" == "ap" ]; then
 					Connection="$(iw dev $RadioIface station dump | grep Station | wc -l)"
@@ -273,7 +275,12 @@ print_wlan() {
 					Connection="$(iw dev $RadioIface link | awk 'BEGIN{FS=": ";Signal="";Bitrate=""} $1~/signal/ {Signal=$2} $1~/tx bitrate/ {Bitrate=$2}END{print Signal" "Bitrate}')"
 				fi
 			fi
-			print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor, conn: $ValueColor$Connection$NormalColor, $(device_rx_tx $RadioIface)"
+			if [ "$Mode" == "ap" ]; then
+				print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor, conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
+			else
+				print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor(device_rx_tx $RadioIface)"
+				print_line "conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
+			fi
 		fi
 	done
 }
@@ -284,7 +291,8 @@ print_vpn() {
 		local Device=$(uci -q get openvpn.$VPN.dev)
 		local Enabled=$(uci -q get openvpn.$VPN.enabled)
 		if [ "$Enabled" == "1" ] || [ "$Enabled" == "" ]; then
-			Mode=$(uci -q get openvpn.$VPN.mode)
+			local Mode=$(uci -q get openvpn.$VPN.mode)
+			local Connection="n/a"
 			if [ "$Mode" == "server" ]; then
 				Mode="$ValueColor$VPN$NormalColor(svr):$(uci -q get openvpn.$VPN.port)"
 				Status=$(uci -q get openvpn.$VPN.status)
@@ -294,7 +302,7 @@ print_vpn() {
 				Connection="Down"
 				ifconfig $Device &>/dev/null && Connection="Up"
 			fi
-			print_line "VPN: $Mode, conn: $ValueColor$Connection$NormalColor, $(device_rx_tx $Device)"
+			print_line "VPN: $Mode, conn: $ValueColor$Connection$NormalColor$(device_rx_tx $Device)"
 		fi
 	done
 }
