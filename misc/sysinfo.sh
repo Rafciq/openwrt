@@ -9,11 +9,12 @@
 #	1.04	RD	Kosmetyka, sugestie mikhnal. Zmiana przetwarzania info. o wan.
 #	1.05	RD	Zmiana algorytmu pobierania danych dla wan i lan
 #	1.06	RD	Parametryzacja kolorów i pojawiania siê podkreœleñ
+#	1.07	RD	Modyfikacja zwi¹zana z poprawnym wyœwietlaniem interfejsu dla prot.3g
+#	1.08	RD	Modyfikacja wyœwietlania DNS-ów dla wan, dodanie uptime dla interfejsów
 #
 # Destination /sbin/sysinfo.sh
 #
 . /usr/share/libubox/jshn.sh
-#. /lib/functions/network.sh
 
 local Width=60
 local StartRuler="1"
@@ -32,13 +33,15 @@ initialize() {
 		-m) ColorMode="0";;
 		-sr) StartRuler="0";;
 		-er) EndRuler="0";;
-		-w)	Width=120;;
+		-w1) Width=80;;
+		-w2) Width=100;;
+		-w3) Width=120;;
 		-h|*)	
 			echo "Usage: $0 - [parameter]"
 			echo "	-h	: This help."
 			echo "	-m	: Display mono version."
-			echo "	-sr : Without start horizontal ruler."	
-			echo "	-er : Without end horizontal ruler."	
+			echo "	-sr	: Without start horizontal ruler."	
+			echo "	-er	: Without end horizontal ruler."	
 			exit 1;;
 		esac
 	done
@@ -63,7 +66,7 @@ initialize() {
 
 human_readable() {
 	if [ $1 -gt 0 ]; then
-		printf "$(awk -v n=$1 'BEGIN{for(i=split("B KB MB GB TB PB",suffix);s<1;i--)s=n/(2**(10*i));printf (int(s)=s)?"%.0f%s":"%.1f%s",s,suffix[i+2]}')"
+		printf "$(awk -v n=$1 'BEGIN{for(i=split("B KB MB GB TB PB",suffix);s<1;i--)s=n/(2**(10*i));printf (int(s)==s)?"%.0f%s":"%.1f%s",s,suffix[i+2]}')"
 	else
 		printf "0B"
 	fi
@@ -72,6 +75,22 @@ human_readable() {
 device_rx_tx() {
 	local RXTX=$(awk -v Device=$1 '$1==Device ":"{printf "%d\t%d",$2,$10}' /proc/net/dev)
 	[ "$RXTX" != "" ] && printf "rx/tx: $RXTXColor$(human_readable $(echo "$RXTX" | cut -f 1))$NormalColor/$RXTXColor$(human_readable $(echo "$RXTX" | cut -f 2))$NormalColor"
+}
+
+uptime_str() {
+	local Uptime=$1
+	if [ $Uptime -gt 0 ]; then
+		local Days=$(expr $Uptime / 60 / 60 / 24)
+		local Hours=$(expr $Uptime / 60 / 60 % 24)
+		local Minutes=$(expr $Uptime / 60 % 60)
+		local Seconds=$(expr $Uptime % 60)
+		if [ $Days -gt 0 ]; then
+			Days=$(printf "%dd " $Days)
+		else
+			Days=""
+		fi
+		printf "$Days%02d:%02d:%02d" $Hours $Minutes $Seconds
+	fi
 }
 
 print_line() {
@@ -90,12 +109,10 @@ print_machine() {
 }
 
 print_uptime() {
-	local Uptime=$(cut -d. -f1 /proc/uptime)
-	local Days=$(expr $Uptime / 60 / 60 / 24)
-	local Hours=$(expr $Uptime / 60 / 60 % 24)
-	local Minutes=$(expr $Uptime / 60 % 60)
-	local Seconds=$(expr $Uptime % 60)
-	print_line "Uptime: $ValueColor$(printf '%dd %02d:%02d:%02d' $Days $Hours $Minutes $Seconds)$NormalColor, Now: $ValueColor$(date +'%Y-%m-%d %H:%M:%S')$NormalColor"
+	local SysUptime=$(cut -d. -f1 /proc/uptime)
+	local Uptime=$(uptime_str $SysUptime)
+	local Now=$(date +'%Y-%m-%d %H:%M:%S')
+	print_line "Uptime: $ValueColor$Uptime$NormalColor, Now: $ValueColor$Now$NormalColor"
 }
 
 print_loadavg() {
@@ -122,23 +139,25 @@ print_memory() {
 print_wan() {
 	local Zone
 	local Device
-	local State
-	local Iface
-	local IP4
-	local IP6
-	local Subnet4
-	local Subnet6
-	local Gateway4
-	local Gateway6
-	local DNS
-	local Protocol
 	for Zone in $(uci -q show firewall | grep .masq= | cut -f2 -d.); do
 		for Device in $(uci -q get firewall.$Zone.network); do
 			local Status="$(ubus call network.interface.$Device status 2>/dev/null)"
 			if [ "$Status" != "" ]; then
+				local State=""
+				local Iface=""
+				local Uptime=""
+				local IP4=""
+				local IP6=""
+				local Subnet4=""
+				local Subnet6=""
+				local Gateway4="n/a"
+				local Gateway6="n/a"
+				local DNS=""
+				local Protocol=""
 				json_load "${Status:-{}}"
 				json_get_var State up
-				json_get_var Iface device
+				json_get_var Uptime uptime
+				json_get_var Iface l3_device
 				json_get_var Protocol proto
 				if json_get_type Status ipv4_address && [ "$Status" = array ]; then
 					json_select ipv4_address
@@ -189,8 +208,8 @@ print_wan() {
 				if [ "$State" == "1" ]; then
 					[ "$IP4" != "" ] && print_line "WAN: $AddrColor$IP4$NormalColor($Iface), gateway: $AddrColor$Gateway4$NormalColor"
 					[ "$IP6" != "" ] && print_line "WAN: $AddrColor$IP6$NormalColor($Iface), gateway: $AddrColor$Gateway6$NormalColor"
-					print_line "proto: $ValueColor$Protocol$NormalColor, $(device_rx_tx $Iface)"
-					print_line "dns: $AddrColor$DNS$NormalColor"
+					print_line "proto: $ValueColor$Protocol$NormalColor, uptime: $ValueColor$(uptime_str $Uptime)$NormalColor, $(device_rx_tx $Iface)"
+					[ "$DNS" != "" ] && print_line "dns: $AddrColor$DNS$NormalColor"
 				fi
 			fi
 		done
@@ -292,4 +311,4 @@ print_lan
 print_wlan
 print_vpn
 [ "$EndRuler" == "1" ] && print_horizontal_ruler
-exit 0
+exit 
