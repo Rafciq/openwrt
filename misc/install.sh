@@ -65,7 +65,7 @@ local IMAGE_FILENAME="sysupgrade.bin"
 local BACKUP_FILE
 local POST_INSTALL_SCRIPT="post-installer"
 local POST_INSTALLER="/bin/$POST_INSTALL_SCRIPT.sh"
-local EXTROOT_BYPASS_SCRIPT="bypass-installer"
+local EXTROOT_BYPASS_SCRIPT="extroot-bypass"
 local EXTROOT_BYPASSER="/bin/$EXTROOT_BYPASS_SCRIPT.sh"
 local INSTALLER_KEEP_FILE="/lib/upgrade/keep.d/$POST_INSTALL_SCRIPT"
 local RC_LOCAL="/etc/rc.local"
