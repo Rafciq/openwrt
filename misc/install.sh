@@ -1,11 +1,12 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.04 Rafal Drzymala 2013
+# Script version 1.05 Rafal Drzymala 2013
 #
 # Changelog
 #
 #	1.00	RD	First stable code
 #	1.04	RD	Change code sequence
+#	1.05	RD	Code tune up
 #
 # Usage
 #	install.sh download 
@@ -29,6 +30,22 @@
 #			cleanup installation
 #			... reboot system ...
 #
+# Examples configuration in /etc/config/system
+#
+#	config sysupgrade
+#		option localinstall '/install'
+#		option backupconfig '/backup'
+#		option imagesource 'http://ecco.selfip.net/attitude_adjustment/ar71xx'
+#		option imageprefix 'openwrt-ar71xx-generic-'
+#		option imagesuffix '-squashfs-sysupgrade.bin'
+#		list opkg libusb 
+#		list opkg kmod-usb-serial-option 
+#		list opkg kmod-usb-net-cdc-ether 
+#		list opkg usb-modeswitch-data 
+#		list opkg chat 
+#		list opkg comgt
+#		list opkg ntpclient 
+#
 # Destination /sbin/install.sh
 #
 
@@ -41,11 +58,14 @@ local DEPENDS
 local IMAGE_SOURCE
 local IMAGE_PREFIX
 local IMAGE_SUFFIX
-local IMAGE_FILENAME
+local IMAGE_FILENAME="sysupgrade.bin"
 local BACKUP_FILE
-local OPKG_INSTALL_SCRIPT
-local OPKG_INSTALLER
-local OPKG_KEEP_FILE
+local POST_INSTALL_SCRIPT="post-installer"
+local POST_INSTALLER="/bin/$POST_INSTALL_SCRIPT.sh"
+local EXTROOT_BYPASS_SCRIPT="bypass-installer"
+local EXTROOT_BYPASSER="/bin/$EXTROOT_BYPASS_SCRIPT.sh"
+local INSTALLER_KEEP_FILE="/lib/upgrade/keep.d/$POST_INSTALL_SCRIPT"
+local RC_LOCAL="/etc/rc.local"
 local BIN_LOGGER
 local BIN_CAT
 local BIN_RM
@@ -57,7 +77,7 @@ local BIN_SYSUPGRADE
 check_exit_code() {
 	local CODE=$?
 	if [ $CODE != 0 ]; then 
-		echo "Abort, error ($CODE) detected."
+		echo "Abort, error ($CODE) detected!"
 		exit $CODE
 	fi
 }
@@ -67,6 +87,18 @@ get_mount_device() {
 	[ -L $CHECK_PATH ] && CHECK_PATH=$(ls -l $CHECK_PATH | awk -F " -> " '{print $2}')
 	echo $(awk -v path="$CHECK_PATH" 'BEGIN{FS=" ";device=""}path~"^"$2{if($2>point){device=$1;point=$2}}END{print device}' /proc/mounts)
 	check_exit_code
+}
+
+which_binary() {
+	local VARIABLE="$1"
+	local BINARY="$2"
+	local WHICH=$(which $BINARY)
+	if [ "$WHICH" == "" ]; then
+		echo "Binary $BINARY not found in system!"
+		exit 1
+	else
+		eval "export -- \"$VARIABLE=$WHICH\""
+	fi
 }
 
 package_execute_cmd() {
@@ -123,7 +155,6 @@ initialize() {
 	IMAGE_SOURCE=$(uci -q get system.@sysupgrade[0].imagesource)
 	IMAGE_PREFIX=$(uci -q get system.@sysupgrade[0].imageprefix)
 	IMAGE_SUFFIX=$(uci -q get system.@sysupgrade[0].imagesuffix)
-	IMAGE_FILENAME="sysupgrade.bin"
 	PACKAGES=$(uci -q get system.@sysupgrade[0].opkg)
 	if [ "$CMD" == "sysupgrade" ]; then
 		local MOUNT_DEVICE=$(get_mount_device $INSTALL_PATH)
@@ -141,16 +172,13 @@ initialize() {
 			exit 1
 		fi
 	fi
-	OPKG_INSTALL_SCRIPT="pkg-installer"
-	OPKG_INSTALLER="/bin/$OPKG_INSTALL_SCRIPT.sh"
-	OPKG_KEEP_FILE="/lib/upgrade/keep.d/$OPKG_INSTALL_SCRIPT"
-	BIN_LOGGER=$(which logger)
-	BIN_CAT=$(which cat)
-	BIN_RM=$(which rm)
-	BIN_REBOOT=$(which reboot)
-	BIN_AWK=$(which awk)
-	BIN_OPKG=$(which opkg)
-	BIN_SYSUPGRADE=$(which sysupgrade)
+	which_binary BIN_LOGGER logger
+	which_binary BIN_CAT cat
+	which_binary BIN_RM rm
+	which_binary BIN_REBOOT reboot
+	which_binary BIN_AWK awk
+	which_binary BIN_OPKG opkg
+	which_binary BIN_SYSUPGRADE sysupgrade
 	echo "Operation $CMD on $HOST_NAME"
 }
 
@@ -251,49 +279,49 @@ image_download() {
 	local IMAGE_REMOTE_NAME="$IMAGE_SOURCE/$IMAGE_PREFIX$(system_board_name)$IMAGE_SUFFIX"
 	local IMAGE_LOCAL_NAME="$INSTALL_PATH/$IMAGE_FILENAME"
 	[ -f $IMAGE_LOCAL_NAME ] && rm -f $IMAGE_LOCAL_NAME
-	echo "Downloading system image from $IMAGE_REMOTE_NAME ..."	
+	echo "Downloading system image to $IMAGE_LOCAL_NAME from $IMAGE_REMOTE_NAME ..."	
 	wget -O $IMAGE_LOCAL_NAME $IMAGE_REMOTE_NAME
 	check_exit_code
 }
 
 extroot_preapre() {
-	local ROOTFS_CONFIG=$(uci show fstab | grep .is_rootfs | cut -d. -f2)
-	local ROOTFS_ENABLED
-	[ "$ROOTFS_CONFIG" != "" ] && ROOTFS_ENABLED=$(uci -q get fstab.$ROOTFS_CONFIG.is_rootfs)
-	if [ "$ROOTFS_ENABLED" == "1" ]; then
+	local EXTROOT_CONFIG=$(uci show fstab | grep .is_rootfs | cut -d. -f2)
+	local EXTROOT_ENABLED
+	[ "$EXTROOT_CONFIG" != "" ] && EXTROOT_ENABLED=$(uci -q get fstab.$EXTROOT_CONFIG.is_rootfs)
+	if [ "$EXTROOT_ENABLED" == "1" ]; then
 		local ROOTFS_DATA_DEV=$(awk 'BEGIN{FS=" "}$4~"rootfs_data"{print "/dev/"substr($1,0,3)"block"substr($1,4,length($1)-4)}' /proc/mtd)
-#		local ROOTFS_DATA_DEV=$(awk 'BEGIN{FS=" "}$4~"firmware"{print "/dev/"substr($1,0,3)"block"substr($1,4,length($1)-4)}' /proc/mtd)
 		if [ "$ROOTFS_DATA_DEV" != "" ]; then
-			echo "Preparing rootfs bypass ..."
+			echo "Preparing extroot bypass $EXTROOT_BYPASSER ..."
 			local MOUNT_POINT=/mnt/rootfs_data
 			mkdir -p $MOUNT_POINT
 			mount -t jffs2 $ROOTFS_DATA_DEV $MOUNT_POINT
 			check_exit_code
 			cp -f /etc/config/fstab $MOUNT_POINT/etc/config/fstab
 			check_exit_code
-			echo "$OPKG_INSTALLER">$MOUNT_POINT$OPKG_KEEP_FILE
+			echo "$EXTROOT_BYPASSER">$MOUNT_POINT$INSTALLER_KEEP_FILE
 			check_exit_code
 			echo -e	"#!/bin/sh\n" \
-					"$BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT \"Start rootfs bypass\"\n" \
+					"# Script auto-generated by $0\n" \
+					"$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Start extroot bypass\"\n" \
 					"if [ -d /tmp/overlay-disabled ]; then\n" \
-					"	$BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT \"Removing overlay-rootfs checksum\"\n" \
+					"	$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Removing overlay-rootfs checksum\"\n" \
 					"	$BIN_RM -f /tmp/overlay-disabled/.extroot.md5sum\n" \
 					"	$BIN_RM -f /tmp/overlay-disabled/etc/extroot.md5sum\n" \
 					"fi\n" \
 					"if [ -d /tmp/whole_root-disabled ]; then\n" \
-					"	$BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT \"Removing whole-rootfs checksum\"\n" \
+					"	$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Removing whole-rootfs checksum\"\n" \
 					"	$BIN_RM -f /tmp/whole_root-disabled/.extroot.md5sum\n" \
 					"	$BIN_RM -f /tmp/whole_root-disabled/etc/extroot.md5sum\n" \
 					"fi\n" \
-					"$BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT \"Stop rootfs bypass, cleaning and force reboot\"\n" \
-					"$BIN_RM -f $OPKG_KEEP_FILE\n" \
-					"$BIN_RM -f $OPKG_INSTALLER;$BIN_REBOOT -f\n" \
-					"# Done.">$MOUNT_POINT$OPKG_INSTALLER
+					"$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Stop extroot bypass, cleaning and force reboot\"\n" \
+					"$BIN_RM -f $INSTALLER_KEEP_FILE\n" \
+					"$BIN_RM -f $EXTROOT_BYPASSER;$BIN_REBOOT -f\n" \
+					"# Done.">$MOUNT_POINT$EXTROOT_BYPASSER
 			check_exit_code
-			chmod 777 $MOUNT_POINT$OPKG_INSTALLER
+			chmod 777 $MOUNT_POINT$EXTROOT_BYPASSER
 			check_exit_code
-			echo "Setting next boot autorun rootfs bypass ..."
-			echo -e "$OPKG_INSTALLER &\n$(cat $MOUNT_POINT/etc/rc.local)">$MOUNT_POINT/etc/rc.local
+			echo "Setting next boot autorun extroot bypass ..."
+			echo -e "$EXTROOT_BYPASSER &\n$(cat $MOUNT_POINT$RC_LOCAL)">$MOUNT_POINT$RC_LOCAL
 			check_exit_code
 			sync
 			umount $MOUNT_POINT
@@ -303,30 +331,31 @@ extroot_preapre() {
 }
 
 installer_prepare() {
-	echo "Preparing packages installer ..."
-	echo "$OPKG_INSTALLER">$OPKG_KEEP_FILE
+	echo "Preparing packages installer $POST_INSTALLER ..."
+	echo "$POST_INSTALLER">$INSTALLER_KEEP_FILE
 	check_exit_code
 	echo -e	"#!/bin/sh\n" \
+			"# Script auto-generated by $0\n" \
 			"local PACKAGES=\"$PACKAGES\"\n" \
 			"local PACKAGE\n" \
-			"$BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT \"Start instalation of packages\"\n" \
+			"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Start instalation of packages\"\n" \
 			"$BIN_CAT /etc/opkg.conf | $BIN_AWK 'BEGIN{print \"src/gz local file:/$INSTALL_PATH\"}!/^src/{print \$0}' >/etc/opkg.conf\n" \
-			"$BIN_OPKG update | $BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT\n" \
+			"$BIN_OPKG update | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT\n" \
 			"for PACKAGE in \$PACKAGES; do\n" \
-			"	$BIN_OPKG install \$PACKAGE | $BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT\n" \
-			"	[ -x /etc/init.d/\$PACKAGE ] && /etc/init.d/\$PACKAGE enable | $BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT\n" \
+			"	$BIN_OPKG install \$PACKAGE | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT\n" \
+			"	[ -x /etc/init.d/\$PACKAGE ] && /etc/init.d/\$PACKAGE enable | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT\n" \
 			"done\n" \
-			"$BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT \"Restoring config backup from $BACKUP_FILE\"\n" \
+			"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Restoring config backup from $BACKUP_FILE\"\n" \
 			"$BIN_SYSUPGRADE --restore-backup $BACKUP_FILE\n" \
-			"$BIN_LOGGER -p user.notice -t $OPKG_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\"\n" \
-			"$BIN_RM -f $OPKG_KEEP_FILE\n" \
-			"$BIN_RM -f $OPKG_INSTALLER;$BIN_REBOOT -f\n" \
-			"# Done.">$OPKG_INSTALLER
+			"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\"\n" \
+			"$BIN_RM -f $INSTALLER_KEEP_FILE\n" \
+			"$BIN_RM -f $POST_INSTALLER;$BIN_REBOOT -f\n" \
+			"# Done.">$POST_INSTALLER
 	check_exit_code
-	chmod 777 $OPKG_INSTALLER
+	chmod 777 $POST_INSTALLER
 	check_exit_code
 	echo "Setting next boot autorun packages installer ..."
-	echo -e "$OPKG_INSTALLER &\n$(cat /etc/rc.local)">/etc/rc.local
+	echo -e "$POST_INSTALLER &\n$(cat $RC_LOCAL)">$RC_LOCAL
 	check_exit_code
 	extroot_preapre
 }
