@@ -24,7 +24,7 @@
 #	install.sh sysupgrade 
 #			backup config,
 #			download all packages and system image do install directory
-#			prepare port upgrade package installer (prepare extroot bypass script)
+#			prepare post upgrade package installer (prepare extroot bypass script)
 #			system upgrade
 #			... reboot system ...
 #			if extroot exist, clean check sum and reboot system
