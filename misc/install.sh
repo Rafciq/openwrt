@@ -225,12 +225,12 @@ config_backup() {
 		echo "Backup file name is empty."
 		exit 1
 	fi
-	echo "Making config backup to $BACKUP_FILE ..."
+	echo "Making configuration backup to $BACKUP_FILE ..."
 	sysupgrade --create-backup $BACKUP_FILE
 	check_exit_code
 	chmod 640 $BACKUP_FILE
 	check_exit_code
-	echo "Config backuped."
+	echo "Configuration backuped."
 }
 
 config_restore() {
@@ -238,10 +238,10 @@ config_restore() {
 		echo "Backup file name is empty."
 		exit 1
 	else
-		echo "Restoring config backup from $BACKUP_FILE ..."
+		echo "Restoring configuration from backup $BACKUP_FILE ..."
 		sysupgrade --restore-backup $BACKUP_FILE
 		check_exit_code
-		echo "Config restored."
+		echo "Configuration restored."
 	fi
 }
 
@@ -252,7 +252,7 @@ packages_disable() {
 			package_execute_cmd $PACKAGE disable
 			package_execute_cmd $PACKAGE stop
 		done
-		echo "Packages disabled."
+		echo "Packages are disabled."
 	fi
 }
 
@@ -263,7 +263,7 @@ packages_enable() {
 			package_execute_cmd $PACKAGE enable
 			package_execute_cmd $PACKAGE start
 		done
-		echo "Packages enabled."
+		echo "Packages are enabled."
 	fi
 }
 
@@ -272,7 +272,7 @@ packages_install() {
 		echo "Installing packages ..."
 		opkg $CMD $PACKAGES
 		check_exit_code
-		echo "Packages installed."
+		echo "Packages are installed."
 	fi
 }
 
@@ -289,7 +289,7 @@ packages_download() {
 		[ -f $INSTALL_PATH/$PACKAGES_FILE ] && rm -f $INSTALL_PATH/$PACKAGES_FILE
 		[ -f $INSTALL_PATH/$PACKAGES_LIST ] && rm -f $INSTALL_PATH/$PACKAGES_LIST
 		for PACKAGE in $PACKAGES $DEPENDS; do
-			echo "Getting packages information for $PACKAGE."
+			echo "Getting information for package $PACKAGE."
 			opkg info $PACKAGE >>$INSTALL_PATH/$PACKAGES_FILE
 			check_exit_code
 		done 
@@ -298,7 +298,7 @@ packages_download() {
 		check_exit_code
 		rm -f $INSTALL_PATH/$PACKAGES_FILE
 		check_exit_code
-		echo "Packages downloaded."
+		echo "Packages are downloaded."
 	fi
 }
 
@@ -313,7 +313,7 @@ image_download() {
 	echo "Downloading system image as $IMAGE_LOCAL_NAME from $IMAGE_REMOTE_NAME ..."	
 	wget -O $IMAGE_LOCAL_NAME $IMAGE_REMOTE_NAME
 	check_exit_code
-	echo "System image downloaded."
+	echo "System image is downloaded."
 }
 
 extroot_preapre() {
