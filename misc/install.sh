@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.07 Rafal Drzymala 2013
+# Script version 1.08 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -9,27 +9,28 @@
 #	1.05	RD	Code tune up
 #	1.06	RD	Code tune up
 #	1.07	RD	ExtRoot code improvments
+#	1.08	RD	Add image check sum control
 #
 # Usage
 #	install.sh download 
 #			download all packages and system image do install directory
 #
 #	install.sh install
-#			backup config,
+#			backup configuration,
 #			stop and packages disable, 
 #			install packages,
-#			restore config,
+#			restore configuration,
 #			enable and start packages
 #
 #	install.sh sysupgrade 
-#			backup config,
+#			backup configuration,
 #			download all packages and system image do install directory
 #			prepare post upgrade package installer (prepare extroot bypass script)
 #			system upgrade
 #			... reboot system ...
 #			if extroot exist, clean check sum and reboot system
 #			install packages,
-#			restore config,
+#			restore configuration,
 #			cleanup installation
 #			... reboot system ...
 #
@@ -309,11 +310,32 @@ image_download() {
 	fi
 	local IMAGE_REMOTE_NAME="$IMAGE_SOURCE/$IMAGE_PREFIX$(system_board_name)$IMAGE_SUFFIX"
 	local IMAGE_LOCAL_NAME="$INSTALL_PATH/$IMAGE_FILENAME"
-	[ -f $IMAGE_LOCAL_NAME ] && rm -f $IMAGE_LOCAL_NAME
+	local SUMS_REMOTE_NAME="$IMAGE_SOURCE/md5sums"
+	local SUMS_LOCAL_NAME="$INSTALL_PATH/md5sums"
+		[ -f $IMAGE_LOCAL_NAME ] && rm -f $IMAGE_LOCAL_NAME
 	echo "Downloading system image as $IMAGE_LOCAL_NAME from $IMAGE_REMOTE_NAME ..."	
 	wget -O $IMAGE_LOCAL_NAME $IMAGE_REMOTE_NAME
 	check_exit_code
-	echo "System image is downloaded."
+	echo "Downloading images sums as $SUMS_LOCAL_NAME from $SUMS_REMOTE_NAME ..."	
+	wget -O $SUMS_LOCAL_NAME $SUMS_REMOTE_NAME
+	echo "Checking system image control sum ..."	
+	check_exit_code
+	local SUM_ORG=$(grep $(basename $IMAGE_REMOTE_NAME) $SUMS_LOCAL_NAME | cut -d " " -f 1)
+	check_exit_code
+	local SUM_FILE=$(md5sum $IMAGE_LOCAL_NAME | cut -d " " -f 1)
+	check_exit_code
+	if [ "$SUM_ORG" == "" ]; then
+		echo "Can't get original control sum!"
+		exit 1
+	elif [ "$SUM_FILE" == "" ]; then
+		echo "Can't calculate system image control sum!"
+		exit 1
+	elif [ "$SUM_ORG" != "$SUM_FILE" ]; then
+		echo "Downloaded system image is damaged!"
+		exit 1
+	else
+		echo "System image is downloaded and checksum is correct."
+	fi
 }
 
 extroot_preapre() {
