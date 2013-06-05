@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.08 Rafal Drzymala 2013
+# Script version 1.09 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -8,8 +8,10 @@
 #	1.04	RD	Change code sequence
 #	1.05	RD	Code tune up
 #	1.06	RD	Code tune up
-#	1.07	RD	ExtRoot code improvments
+#	1.07	RD	ExtRoot code improvements
 #	1.08	RD	Add image check sum control
+#	1.09	RD	Add command line switch on/off-line package post-install
+#				Add command line switch to disable configuration backup 
 #
 # Usage
 #	install.sh download 
@@ -54,8 +56,11 @@
 #
 
 local CMD
+local OFFLINE_POST_INSTALL="1"
 local HOST_NAME
+local BACKUP_ENABLE="1"
 local BACKUP_PATH
+local BACKUP_FILE
 local INSTALL_PATH
 local PACKAGES
 local DEPENDS
@@ -63,7 +68,6 @@ local IMAGE_SOURCE
 local IMAGE_PREFIX
 local IMAGE_SUFFIX
 local IMAGE_FILENAME="sysupgrade.bin"
-local BACKUP_FILE
 local POST_INSTALL_SCRIPT="post-installer"
 local POST_INSTALLER="/bin/$POST_INSTALL_SCRIPT.sh"
 local EXTROOT_BYPASS_SCRIPT="extroot-bypass"
@@ -77,6 +81,7 @@ local BIN_REBOOT
 local BIN_AWK
 local BIN_OPKG
 local BIN_SYSUPGRADE
+local BIN_PING
 
 check_exit_code() {
 	local CODE=$?
@@ -145,48 +150,67 @@ caution_alert() {
 	[ "$KEY" != "Y" ] && exit 0
 }
 
-initialize() {
-	CMD="$1"
-	[ "$CMD" == "" ] && CMD=install
-	if [ "$CMD" != "install" ] && [ "$CMD" != "download" ] && [ "$CMD" != "sysupgrade" ]; then
-		echo "Invalid command $CMD"
+print_help() {
 		echo "Usage:"
-		echo "	$0 [install|download|sysupgrade]"
+		echo "	$0 [install|download|sysupgrade] [-h|--help] [-o|--online] [-b|--backup-off]"
+		echo ""
+		echo "		-h		This help"
+		echo "		-b		Disable configuration backup"
+		echo "		-o		Online package installation by post-installer"
+		echo ""
 		exit 0
-	fi
+}
+
+initialize() {
+	while [ -n "$1" ]; do
+		case "$1" in
+			install|download|sysupgrade) CMD="$1";; 
+			-h|--help) print_help;;
+			-b|--backup-off) BACKUP_ENABLE="";;
+			-o|--online) OFFLINE_POST_INSTALL="";;
+			-*) echo "Invalid option: $1";print_help;;
+			*) echo "Invalid command: $1";print_help;;
+		esac
+	shift;
+	done
+	[ "$CMD" == "" ] && CMD=install
 	HOST_NAME=$(uci -q get system.@system[0].hostname)
 	if [ "$HOST_NAME" == "" ]; then 
-		echo "Error while getting host name"
+		echo "Error while getting host name!"
 		exit 1
 	fi
 	INSTALL_PATH=$(uci -q get system.@sysupgrade[0].localinstall)
-	if [ "$INSTALL_PATH" == "" ]; then
-		echo "Install path is empty."
-		exit 1
-	fi	
-	if [ ! -d "$INSTALL_PATH" ]; then
-		echo "Install path not exist."
-		exit 1
-	fi	
-	BACKUP_PATH=$(uci -q get system.@sysupgrade[0].backupconfig)
-	BACKUP_FILE="$BACKUP_PATH/backup-$HOST_NAME-$(date +%Y-%m-%d-%H-%M-%S).tar.gz"		
+	if [ "$CMD" == "download" ] || [ "$OFFLINE_POST_INSTALL" != "" ]; then
+		if [ "$INSTALL_PATH" == "" ]; then
+			echo "Install path is empty!"
+			exit 1
+		fi	
+		if [ ! -d "$INSTALL_PATH" ]; then
+			echo "Install path not exist!"
+			exit 1
+		fi	
+	fi
+	if [ "$BACKUP_ENABLE" != "" ]; then
+		BACKUP_PATH=$(uci -q get system.@sysupgrade[0].backupconfig)
+		BACKUP_FILE="$BACKUP_PATH/backup-$HOST_NAME-$(date +%Y-%m-%d-%H-%M-%S).tar.gz"		
+		if [ ! -d "$BACKUP_PATH" ]; then
+			echo "Backup path not exist!"
+			exit 1
+		fi
+		local MOUNT_DEVICE=$(get_mount_device $BACKUP_PATH)
+		if [ "$MOUNT_DEVICE" == "rootfs" ] || [ "$MOUNT_DEVICE" == "sysfs" ] || [ "$MOUNT_DEVICE" == "tmpfs" ]; then
+			echo "Backup path ($BACKUP_PATH) must be on external device. Now is mounted on $MOUNT_DEVICE."
+			exit 1
+		fi
+	fi
 	IMAGE_SOURCE=$(uci -q get system.@sysupgrade[0].imagesource)
 	IMAGE_PREFIX=$(uci -q get system.@sysupgrade[0].imageprefix)
 	IMAGE_SUFFIX=$(uci -q get system.@sysupgrade[0].imagesuffix)
 	PACKAGES=$(uci -q get system.@sysupgrade[0].opkg)
-	if [ "$CMD" == "sysupgrade" ]; then
+	if [ "$CMD" == "sysupgrade" ] && [ "$OFFLINE_POST_INSTALL" != "" ]; then
 		local MOUNT_DEVICE=$(get_mount_device $INSTALL_PATH)
 		if [ "$MOUNT_DEVICE" == "rootfs" ] || [ "$MOUNT_DEVICE" == "sysfs" ] || [ "$MOUNT_DEVICE" == "tmpfs" ]; then
 			echo "Install path ($INSTALL_PATH) must be on external device. Now is mounted on $MOUNT_DEVICE."
-			exit 1
-		fi
-		if [ ! -d "$BACKUP_PATH" ]; then
-			echo "Backup path not exist."
-			exit 1
-		fi
-		MOUNT_DEVICE=$(get_mount_device $BACKUP_PATH)
-		if [ "$MOUNT_DEVICE" == "rootfs" ] || [ "$MOUNT_DEVICE" == "sysfs" ] || [ "$MOUNT_DEVICE" == "tmpfs" ]; then
-			echo "Backup path ($BACKUP_PATH) must be on external device. Now is mounted on $MOUNT_DEVICE."
 			exit 1
 		fi
 	fi
@@ -197,6 +221,7 @@ initialize() {
 	which_binary BIN_AWK awk
 	which_binary BIN_OPKG opkg
 	which_binary BIN_SYSUPGRADE sysupgrade
+	which_binary BIN_PING ping
 	echo "Operation $CMD on $HOST_NAME"
 }
 
@@ -218,31 +243,35 @@ check_dependency() {
 }
 
 config_backup() {
-	if [ ! -d "$BACKUP_PATH" ]; then
-		echo "Backup path not exist."
-		exit 1
+	if [ "$BACKUP_ENABLE" != "" ]; then
+		if [ ! -d "$BACKUP_PATH" ]; then
+			echo "Backup path not exist."
+			exit 1
+		fi
+		if [ "$BACKUP_FILE" == "" ]; then
+			echo "Backup file name is empty."
+			exit 1
+		fi
+		echo "Making configuration backup to $BACKUP_FILE ..."
+		sysupgrade --create-backup $BACKUP_FILE
+		check_exit_code
+		chmod 640 $BACKUP_FILE
+		check_exit_code
+		echo "Configuration backuped."
 	fi
-	if [ "$BACKUP_FILE" == "" ]; then
-		echo "Backup file name is empty."
-		exit 1
-	fi
-	echo "Making configuration backup to $BACKUP_FILE ..."
-	sysupgrade --create-backup $BACKUP_FILE
-	check_exit_code
-	chmod 640 $BACKUP_FILE
-	check_exit_code
-	echo "Configuration backuped."
 }
 
 config_restore() {
-	if [ "$BACKUP_FILE" == "" ]; then
-		echo "Backup file name is empty."
-		exit 1
-	else
-		echo "Restoring configuration from backup $BACKUP_FILE ..."
-		sysupgrade --restore-backup $BACKUP_FILE
-		check_exit_code
-		echo "Configuration restored."
+	if [ "$BACKUP_ENABLE" != "" ]; then
+		if [ "$BACKUP_FILE" == "" ]; then
+			echo "Backup file name is empty."
+			exit 1
+		else
+			echo "Restoring configuration from backup $BACKUP_FILE ..."
+			sysupgrade --restore-backup $BACKUP_FILE
+			check_exit_code
+			echo "Configuration restored."
+		fi
 	fi
 }
 
@@ -382,19 +411,32 @@ installer_prepare() {
 			"# Script auto-generated by $0\n" \
 			"local PACKAGES=\"$PACKAGES\"\n" \
 			"local PACKAGE\n" \
-			"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Start instalation of packages\"\n" \
-			"$BIN_CAT /etc/opkg.conf | $BIN_AWK 'BEGIN{print \"src/gz local file:/$INSTALL_PATH\"}!/^src/{print \$0}' >/etc/opkg.conf\n" \
-			"$BIN_OPKG update | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT\n" \
+			"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Start instalation of packages\"\n">$POST_INSTALLER
+	check_exit_code
+	if [ "$OFFLINE_POST_INSTALL" != "" ]; then
+		echo -e "$BIN_CAT /etc/opkg.conf | $BIN_AWK 'BEGIN{print \"src/gz local file:/$INSTALL_PATH\"}!/^src/{print \$0}' >/etc/opkg.conf\n">>$POST_INSTALLER
+		check_exit_code
+	else
+		echo -e	"until $BIN_PING -q -W 30 -c 1 8.8.8.8 2>/dev/null; do\n" \
+				"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Wait for internet connection\"\n" \
+				"done\n">>$POST_INSTALLER
+		check_exit_code
+	fi
+	echo -e "$BIN_OPKG update | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT\n" \
 			"for PACKAGE in \$PACKAGES; do\n" \
 			"	$BIN_OPKG install \$PACKAGE | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT\n" \
 			"	[ -x /etc/init.d/\$PACKAGE ] && /etc/init.d/\$PACKAGE enable | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT\n" \
-			"done\n" \
-			"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Restoring config backup from $BACKUP_FILE\"\n" \
-			"$BIN_SYSUPGRADE --restore-backup $BACKUP_FILE\n" \
-			"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\"\n" \
+			"done\n">>$POST_INSTALLER
+	check_exit_code
+	if [ "$BACKUP_ENABLE" != "" ]; then
+		echo -e	"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Restoring config backup from $BACKUP_FILE\"\n" \
+				"$BIN_SYSUPGRADE --restore-backup $BACKUP_FILE\n">>$POST_INSTALLER
+		check_exit_code
+	fi
+	echo -e	"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\"\n" \
 			"$BIN_RM -f $INSTALLER_KEEP_FILE\n" \
 			"$BIN_RM -f $POST_INSTALLER;$BIN_REBOOT -f\n" \
-			"# Done.">$POST_INSTALLER
+			"# Done.">>$POST_INSTALLER
 	check_exit_code
 	chmod 777 $POST_INSTALLER
 	check_exit_code
