@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.11 Rafal Drzymala 2013
+# Script version 1.12 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -14,6 +14,7 @@
 #				Add command line switch to disable configuration backup 
 #	1.10	RD	Preparation scripts code improvements
 #	1.11	RD	Preparation scripts code improvements (2)
+#	1.12	RD	Preparation scripts code improvements (3)
 #
 # Usage
 #	install.sh download 
@@ -439,14 +440,17 @@ installer_prepare() {
 	fi
 	echo -e	"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\""\
 			"\n$BIN_RM -f $INSTALLER_KEEP_FILE"\
-			"\n$BIN_RM -f $POST_INSTALLER;$BIN_SYNC;$BIN_REBOOT -f"\
+			"\n$BIN_AWK -v installer=\"$POST_INSTALLER\" '{if(seen[installer]++) print \$0}' $RC_LOCAL>$RC_LOCAL"\
+			"\n$BIN_RM -f $POST_INSTALLER"\
+			"\n$BIN_SYNC"\
+			"\n$BIN_REBOOT -f"\
 			"\n# Done.">>$POST_INSTALLER
 	check_exit_code
 	chmod 777 $POST_INSTALLER
 	check_exit_code
 	echo "Setting next boot autorun packages installer ..."
 	add_to_keep_file "$RC_LOCAL"
-	echo -e "$POST_INSTALLER &\n$(cat $RC_LOCAL)">$RC_LOCAL
+	echo -e "[ -x $POST_INSTALLER ] && $POST_INSTALLER &\n$(cat $RC_LOCAL)">$RC_LOCAL
 	check_exit_code
 	echo "Packages installer prepared."
 	extroot_preapre
