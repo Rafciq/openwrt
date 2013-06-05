@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.09 Rafal Drzymala 2013
+# Script version 1.11 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -13,6 +13,7 @@
 #	1.09	RD	Add command line switch on/off-line package post-install
 #				Add command line switch to disable configuration backup 
 #	1.10	RD	Preparation scripts code improvements
+#	1.11	RD	Preparation scripts code improvements (2)
 #
 # Usage
 #	install.sh download 
@@ -78,6 +79,7 @@ local RC_LOCAL="/etc/rc.local"
 local BIN_LOGGER
 local BIN_CAT
 local BIN_RM
+local BIN_SYNC
 local BIN_REBOOT
 local BIN_AWK
 local BIN_OPKG
@@ -218,6 +220,7 @@ initialize() {
 	which_binary BIN_LOGGER logger
 	which_binary BIN_CAT cat
 	which_binary BIN_RM rm
+	which_binary BIN_SYNC sync
 	which_binary BIN_REBOOT reboot
 	which_binary BIN_AWK awk
 	which_binary BIN_OPKG opkg
@@ -418,8 +421,8 @@ installer_prepare() {
 		echo -e "$BIN_CAT /etc/opkg.conf | $BIN_AWK 'BEGIN{print \"src/gz local file:/$INSTALL_PATH\"}!/^src/{print \$0}' >/etc/opkg.conf">>$POST_INSTALLER
 		check_exit_code
 	else
-		echo -e	"until $BIN_PING -q -W 30 -c 1 8.8.8.8 2>/dev/null; do"\
-				"\n$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Wait for internet connection\""\
+		echo -e	"until $BIN_PING -q -W 30 -c 1 8.8.8.8 &>/dev/null; do"\
+				"\n\t$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Wait for internet connection\""\
 				"\ndone">>$POST_INSTALLER
 		check_exit_code
 	fi
@@ -436,7 +439,7 @@ installer_prepare() {
 	fi
 	echo -e	"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\""\
 			"\n$BIN_RM -f $INSTALLER_KEEP_FILE"\
-			"\n$BIN_RM -f $POST_INSTALLER;$BIN_REBOOT -f"\
+			"\n$BIN_RM -f $POST_INSTALLER;$BIN_SYNC;$BIN_REBOOT -f"\
 			"\n# Done.">>$POST_INSTALLER
 	check_exit_code
 	chmod 777 $POST_INSTALLER
