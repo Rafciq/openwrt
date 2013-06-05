@@ -62,7 +62,7 @@ local HOST_NAME
 local BACKUP_ENABLE="1"
 local BACKUP_PATH
 local BACKUP_FILE
-local INSTALL_PATH
+local INSTALL_PATH="/tmp"
 local PACKAGES
 local DEPENDS
 local IMAGE_SOURCE
@@ -180,8 +180,8 @@ initialize() {
 		echo "Error while getting host name!"
 		exit 1
 	fi
-	INSTALL_PATH=$(uci -q get system.@sysupgrade[0].localinstall)
-	if [ "$CMD" == "download" ] || [ "$OFFLINE_POST_INSTALL" != "" ]; then
+	if [ "$CMD" == "download" ] || ([ "$CMD" == "sysupgrade" ] && [ "$OFFLINE_POST_INSTALL" != "" ]); then
+		INSTALL_PATH=$(uci -q get system.@sysupgrade[0].localinstall)
 		if [ "$INSTALL_PATH" == "" ]; then
 			echo "Install path is empty!"
 			exit 1
