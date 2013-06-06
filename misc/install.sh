@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.14 Rafal Drzymala 2013
+# Script version 1.15 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -17,49 +17,10 @@
 #	1.12	RD	Preparation scripts code improvements (3)
 #	1.13	RD	Preparation scripts code improvements (4)
 #	1.14	RD	Extroot scripts code improvements
-#
-# Usage
-#	install.sh download 
-#			download all packages and system image do install directory
-#
-#	install.sh install
-#			backup configuration,
-#			stop and packages disable, 
-#			install packages,
-#			restore configuration,
-#			enable and start packages
-#
-#	install.sh sysupgrade 
-#			backup configuration,
-#			download all packages and system image do install directory
-#			prepare post upgrade package installer (prepare extroot bypass script)
-#			system upgrade
-#			... reboot system ...
-#			if extroot exist, clean check sum and reboot system
-#			install packages,
-#			restore configuration,
-#			cleanup installation
-#			... reboot system ...
-#
-# Examples configuration in /etc/config/system
-#
-#	config sysupgrade
-#		option localinstall '/install'
-#		option backupconfig '/backup'
-#		option imagesource 'http://ecco.selfip.net/attitude_adjustment/ar71xx'
-#		option imageprefix 'openwrt-ar71xx-generic-'
-#		option imagesuffix '-squashfs-sysupgrade.bin'
-#		list opkg libusb 
-#		list opkg kmod-usb-serial-option 
-#		list opkg kmod-usb-net-cdc-ether 
-#		list opkg usb-modeswitch-data 
-#		list opkg chat 
-#		list opkg comgt
-#		list opkg ntpclient 
+#	1.15	RD	Help improvements
 #
 # Destination /sbin/install.sh
 #
-
 local CMD
 local OFFLINE_POST_INSTALL="1"
 local HOST_NAME
@@ -156,13 +117,62 @@ caution_alert() {
 	[ "$KEY" != "Y" ] && exit 0
 }
 
+print_config() {
+		echo "Current configuration:"
+		echo ""
+		echo "Local install directory : '$(uci -q get system.@sysupgrade[0].localinstall)'"
+		echo "Configuration backup direcory : '$(uci -q get system.@sysupgrade[0].backupconfig)'"
+		echo "Image source URL : '$(uci -q get system.@sysupgrade[0].imagesource)'"
+		echo "Image source prefix : '$(uci -q get system.@sysupgrade[0].imageprefix)'"
+		echo "Image source suffix : '$(uci -q get system.@sysupgrade[0].imagesuffix)'"
+		echo "Packages: '$(uci -q get system.@sysupgrade[0].opkg)'"
+		echo ""
+		echo "Examples configuration in /etc/config/system"
+		echo ""
+		echo "	config sysupgrade"
+		echo "		option localinstall '/install'"
+		echo "		option backupconfig '/backup'"
+		echo "		option imagesource 'http://ecco.selfip.net/attitude_adjustment/ar71xx'"
+		echo "		option imageprefix 'openwrt-ar71xx-generic-'"
+		echo "		option imagesuffix '-squashfs-sysupgrade.bin'"
+		echo "		list opkg libusb"
+		echo "		list opkg kmod-usb-serial-option" 
+		echo "		list opkg kmod-usb-net-cdc-ether"
+		echo "		list opkg usb-modeswitch-data"
+		echo "		list opkg comgt"
+		echo "		list opkg ntpclient" 
+		exit 0
+}
+
 print_help() {
 		echo "Usage:"
-		echo "	$0 [install|download|sysupgrade] [-h|--help] [-o|--online] [-b|--backup-off]"
-		echo ""
+		echo "	$0 [install|download|sysupgrade] [-c|--config] [-h|--help] [-o|--online] [-b|--backup-off]"
+		echo "Commands:"
+		echo "	download	download all packages and system image do install directory."
+		echo "	install		backup configuration,"
+		echo "				stop and disable packages," 
+		echo "				install packages,"
+		echo "				restore configuration,"
+		echo "				enable and start packages."
+		echo "	sysupgrade	backup configuration,"
+		echo "				download all packages and system image do install directory (in off-line mode),"
+		echo "				prepare post upgrade package installer,"
+		echo "				prepare extroot bypass script (if needed),"
+		echo "				system upgrade,"
+		echo "				... reboot system ...,"
+		echo "				if extroot exist, clean check sum and reboot system,"
+		echo "				install packages,"
+		echo "				restore configuration,"
+		echo "				cleanup installation,"
+		echo "				... reboot system ..."
+		echo "Options:"
 		echo "		-h		This help"
-		echo "		-b		Disable configuration backup"
-		echo "		-o		Online package installation by post-installer"
+		echo "		-c		Configuration"
+		echo "		-b		Disable configuration backup and restore during installation or system upgrade process."
+		echo "				By default, backup and restore configuration are enabled."
+		echo "				Path to backup have to on external device otherwise during system upgrade can be lost."
+		echo "		-o		Online packages installation by post-installer."
+		echo "				Internet connection is needed after system restart and before packages installation."
 		echo ""
 		exit 0
 }
@@ -172,6 +182,7 @@ initialize() {
 		case "$1" in
 			install|download|sysupgrade) CMD="$1";; 
 			-h|--help) print_help;;
+			-c|--config) print_config;;
 			-b|--backup-off) BACKUP_ENABLE="";;
 			-o|--online) OFFLINE_POST_INSTALL="";;
 			-*) echo "Invalid option: $1";print_help;;
