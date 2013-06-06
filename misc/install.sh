@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.12 Rafal Drzymala 2013
+# Script version 1.13 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -15,6 +15,7 @@
 #	1.10	RD	Preparation scripts code improvements
 #	1.11	RD	Preparation scripts code improvements (2)
 #	1.12	RD	Preparation scripts code improvements (3)
+#	1.13	RD	Preparation scripts code improvements (4)
 #
 # Usage
 #	install.sh download 
@@ -440,7 +441,7 @@ installer_prepare() {
 	fi
 	echo -e	"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\""\
 			"\n$BIN_RM -f $INSTALLER_KEEP_FILE"\
-			"\n$BIN_AWK -v installer=\"$POST_INSTALLER\" '{if(seen[installer]++) print \$0}' $RC_LOCAL>$RC_LOCAL"\
+			"\n$BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL"\
 			"\n$BIN_RM -f $POST_INSTALLER"\
 			"\n$BIN_SYNC"\
 			"\n$BIN_REBOOT -f"\
