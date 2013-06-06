@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.13 Rafal Drzymala 2013
+# Script version 1.14 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -16,6 +16,7 @@
 #	1.11	RD	Preparation scripts code improvements (2)
 #	1.12	RD	Preparation scripts code improvements (3)
 #	1.13	RD	Preparation scripts code improvements (4)
+#	1.14	RD	Extroot scripts code improvements
 #
 # Usage
 #	install.sh download 
@@ -388,23 +389,25 @@ extroot_preapre() {
 				"\n\t$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Removing overlay-rootfs checksum\""\
 				"\n\t$BIN_RM -f /tmp/overlay-disabled/.extroot.md5sum"\
 				"\n\t$BIN_RM -f /tmp/overlay-disabled/etc/extroot.md5sum"\
-				"\n\tAT_END=\"$BIN_REBOOT -f\""\
+				"\n\tAT_END=\"$BIN_SYNC;$BIN_REBOOT -f\""\
 				"\nelif [ -d /tmp/whole_root-disabled ]; then"\
 				"\n\t$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Removing whole-rootfs checksum\""\
 				"\n\t$BIN_RM -f /tmp/whole_root-disabled/.extroot.md5sum"\
 				"\n\t$BIN_RM -f /tmp/whole_root-disabled/etc/extroot.md5sum"\
-				"\n\tAT_END=\"$BIN_REBOOT -f\""\
+				"\n\tAT_END=\"$BIN_SYNC;$BIN_REBOOT -f\""\
 				"\nelif [ -x \"$POST_INSTALLER\" ]; then"\
 				"\n\t$POST_INSTALLER &\n"
 				"\nfi"\
 				"\n$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Stop extroot bypass, cleaning and force reboot if need\""\
-				"\n$BIN_RM -f $EXTROOT_BYPASSER;[ -n \"\$AT_END\" ] && \$AT_END"\
+				"\n$BIN_AWK -v installer=\"$EXTROOT_BYPASSER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL"\
+				"\n$BIN_RM -f $EXTROOT_BYPASSER"\
+				"\n[ -n \"\$AT_END\" ] && \$AT_END"\
 				"\n# Done.">$EXTROOT_BYPASSER
 		check_exit_code
 		chmod 777 $EXTROOT_BYPASSER
 		check_exit_code
 		echo "Setting next boot autorun extroot bypass ..."
-		echo -e "$EXTROOT_BYPASSER\n$(cat $MOUNT_POINT$RC_LOCAL)">$RC_LOCAL
+		echo -e "$EXTROOT_BYPASSER\n$(cat $RC_LOCAL)">$RC_LOCAL
 		check_exit_code
 		echo "Extroot bypass prepared."
 	fi
