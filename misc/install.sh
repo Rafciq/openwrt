@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.15 Rafal Drzymala 2013
+# Script version 1.16 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -18,6 +18,7 @@
 #	1.13	RD	Preparation scripts code improvements (4)
 #	1.14	RD	Extroot scripts code improvements
 #	1.15	RD	Help improvements
+#	1.16	RD	Help improvements (2), Preparation scripts code improvements (5)
 #
 # Destination /sbin/install.sh
 #
@@ -117,64 +118,53 @@ caution_alert() {
 	[ "$KEY" != "Y" ] && exit 0
 }
 
-print_config() {
-		echo "Current configuration:"
-		echo ""
-		echo "Local install directory : '$(uci -q get system.@sysupgrade[0].localinstall)'"
-		echo "Configuration backup direcory : '$(uci -q get system.@sysupgrade[0].backupconfig)'"
-		echo "Image source URL : '$(uci -q get system.@sysupgrade[0].imagesource)'"
-		echo "Image source prefix : '$(uci -q get system.@sysupgrade[0].imageprefix)'"
-		echo "Image source suffix : '$(uci -q get system.@sysupgrade[0].imagesuffix)'"
-		echo "Packages: '$(uci -q get system.@sysupgrade[0].opkg)'"
-		echo ""
-		echo "Examples configuration in /etc/config/system"
-		echo ""
-		echo "	config sysupgrade"
-		echo "		option localinstall '/install'"
-		echo "		option backupconfig '/backup'"
-		echo "		option imagesource 'http://ecco.selfip.net/attitude_adjustment/ar71xx'"
-		echo "		option imageprefix 'openwrt-ar71xx-generic-'"
-		echo "		option imagesuffix '-squashfs-sysupgrade.bin'"
-		echo "		list opkg libusb"
-		echo "		list opkg kmod-usb-serial-option" 
-		echo "		list opkg kmod-usb-net-cdc-ether"
-		echo "		list opkg usb-modeswitch-data"
-		echo "		list opkg comgt"
-		echo "		list opkg ntpclient" 
-		exit 0
-}
-
 print_help() {
-		echo "Usage:"
-		echo "	$0 [install|download|sysupgrade] [-c|--config] [-h|--help] [-o|--online] [-b|--backup-off]"
-		echo "Commands:"
-		echo "	download	download all packages and system image do install directory."
-		echo "	install		backup configuration,"
-		echo "				stop and disable packages," 
-		echo "				install packages,"
-		echo "				restore configuration,"
-		echo "				enable and start packages."
-		echo "	sysupgrade	backup configuration,"
-		echo "				download all packages and system image do install directory (in off-line mode),"
-		echo "				prepare post upgrade package installer,"
-		echo "				prepare extroot bypass script (if needed),"
-		echo "				system upgrade,"
-		echo "				... reboot system ...,"
-		echo "				if extroot exist, clean check sum and reboot system,"
-		echo "				install packages,"
-		echo "				restore configuration,"
-		echo "				cleanup installation,"
-		echo "				... reboot system ..."
-		echo "Options:"
-		echo "		-h		This help"
-		echo "		-c		Configuration"
-		echo "		-b		Disable configuration backup and restore during installation or system upgrade process."
-		echo "				By default, backup and restore configuration are enabled."
-		echo "				Path to backup have to on external device otherwise during system upgrade can be lost."
-		echo "		-o		Online packages installation by post-installer."
-		echo "				Internet connection is needed after system restart and before packages installation."
-		echo ""
-		exit 0
+	echo -e	"Usage:"\
+			"\n\t$0 [install|download|sysupgrade] [-c|--config] [-h|--help] [-o|--online] [-b|--backup-off]"\
+			"\n\nCommands:"\
+			"\n\t\tdownload\tdownload all packages and system image do install directory."\
+			"\n\t\tinstall\t\tbackup configuration,"\
+			"\n\t\t\t\tstop and disable packages,"\
+			"\n\t\t\t\tinstall packages,"\
+			"\n\t\t\t\trestore configuration,"\
+			"\n\t\t\t\tenable and start packages."\
+			"\n\t\tsysupgrade\tbackup configuration,"\
+			"\n\t\t\t\tdownload all packages and system image do install directory (in off-line mode),"\
+			"\n\t\t\t\tprepare post upgrade package installer,"\
+			"\n\t\t\t\tprepare extroot bypass script (if needed),"\
+			"\n\t\t\t\tsystem upgrade,"\
+			"\n\t\t\t\t... reboot system ...,"\
+			"\n\t\t\t\tif extroot exist, clean check sum and reboot system,"\
+			"\n\t\t\t\tinstall packages,"\
+			"\n\t\t\t\trestore configuration,"\
+			"\n\t\t\t\tcleanup installation,"\
+			"\n\t\t\t\t... reboot system ..."\
+			"\nOptions:"\
+			"\n\t\t-h\t\tThis help"\
+			"\n\t\t-c\t\tConfiguration"\
+			"\n\t\t-b\t\tDisable configuration backup and restore during installation or system upgrade process."\
+			"\n\t\t\t\tBy default, backup and restore configuration are enabled."\
+			"\n\t\t\t\tPath to backup have to on external device otherwise during system upgrade can be lost."\
+			"\n\t\t-o\t\tOnline packages installation by post-installer."\
+			"\n\t\t\t\tInternet connection is needed after system restart and before packages installation."\
+			"\nCurrent configuration:"\
+			"\n\tLocal install directory : '$(uci -q get system.@sysupgrade[0].localinstall)'"\
+			"\n\tConfiguration backup direcory : '$(uci -q get system.@sysupgrade[0].backupconfig)'"\
+			"\n\tImage source URL : '$(uci -q get system.@sysupgrade[0].imagesource)'"\
+			"\n\tImage source prefix : '$(uci -q get system.@sysupgrade[0].imageprefix)'"\
+			"\n\tImage source suffix : '$(uci -q get system.@sysupgrade[0].imagesuffix)'"\
+			"\n\tPackages: '$(uci -q get system.@sysupgrade[0].opkg)'"\
+			"\n\nExamples configuration in /etc/config/system"\
+			"\n\tconfig sysupgrade"\
+			"\n\t\toption localinstall '/install'"\
+			"\n\t\toption backupconfig '/backup'"\
+			"\n\t\toption imagesource 'http://ecco.selfip.net/attitude_adjustment/ar71xx'"\
+			"\n\t\toption imageprefix 'openwrt-ar71xx-generic-'"\
+			"\n\t\toption imagesuffix '-squashfs-sysupgrade.bin'"\
+			"\n\t\tlist opkg libusb"\
+			"\n\t\tlist opkg kmod-usb-serial-option"\
+			"\n\t\tlist opkg kmod-usb-net-cdc-ether"
+	exit 0
 }
 
 initialize() {
@@ -182,7 +172,6 @@ initialize() {
 		case "$1" in
 			install|download|sysupgrade) CMD="$1";; 
 			-h|--help) print_help;;
-			-c|--config) print_config;;
 			-b|--backup-off) BACKUP_ENABLE="";;
 			-o|--online) OFFLINE_POST_INSTALL="";;
 			-*) echo "Invalid option: $1";print_help;;
@@ -407,10 +396,10 @@ extroot_preapre() {
 				"\n\t$BIN_RM -f /tmp/whole_root-disabled/etc/extroot.md5sum"\
 				"\n\tAT_END=\"$BIN_SYNC;$BIN_REBOOT -f\""\
 				"\nelif [ -x \"$POST_INSTALLER\" ]; then"\
-				"\n\t$POST_INSTALLER &\n"
+				"\n\t$POST_INSTALLER &\n"\
 				"\nfi"\
 				"\n$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Stop extroot bypass, cleaning and force reboot if need\""\
-				"\n$BIN_AWK -v installer=\"$EXTROOT_BYPASSER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL"\
+				"\n$BIN_CAT $RC_LOCAL | $BIN_AWK -v installer=\"$EXTROOT_BYPASSER\" '\$0!~installer' >$RC_LOCAL"\
 				"\n$BIN_RM -f $EXTROOT_BYPASSER"\
 				"\n[ -n \"\$AT_END\" ] && \$AT_END"\
 				"\n# Done.">$EXTROOT_BYPASSER
@@ -418,7 +407,7 @@ extroot_preapre() {
 		chmod 777 $EXTROOT_BYPASSER
 		check_exit_code
 		echo "Setting next boot autorun extroot bypass ..."
-		echo -e "$EXTROOT_BYPASSER\n$(cat $RC_LOCAL)">$RC_LOCAL
+		echo -e "[ -x $EXTROOT_BYPASSER ] && $EXTROOT_BYPASSER\n$(cat $RC_LOCAL)">$RC_LOCAL
 		check_exit_code
 		echo "Extroot bypass prepared."
 	fi
@@ -455,16 +444,16 @@ installer_prepare() {
 	fi
 	echo -e	"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\""\
 			"\n$BIN_RM -f $INSTALLER_KEEP_FILE"\
-			"\n$BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL"\
+			"\n$BIN_CAT $RC_LOCAL | $BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' >$RC_LOCAL"\
 			"\n$BIN_RM -f $POST_INSTALLER"\
 			"\n$BIN_SYNC"\
-			"\n$BIN_REBOOT -f"\
+			"\n# $BIN_REBOOT -f"\
 			"\n# Done.">>$POST_INSTALLER
 	check_exit_code
 	chmod 777 $POST_INSTALLER
 	check_exit_code
 	echo "Setting next boot autorun packages installer ..."
-	add_to_keep_file "$RC_LOCAL"
+	#add_to_keep_file "$RC_LOCAL"
 	echo -e "[ -x $POST_INSTALLER ] && $POST_INSTALLER &\n$(cat $RC_LOCAL)">$RC_LOCAL
 	check_exit_code
 	echo "Packages installer prepared."
