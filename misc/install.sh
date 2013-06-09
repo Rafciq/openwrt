@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.18 Rafal Drzymala 2013
+# Script version 1.19 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -19,24 +19,25 @@
 #	1.14	RD	Extroot scripts code improvements
 #	1.15	RD	Help improvements
 #	1.16	RD	Help improvements (2), Preparation scripts code improvements (5)
-#	1.17	RD	Extroot scripts code improvements
+#	1.17	RD	Extroot scripts code improvements (2)
 #	1.18	RD	Include installed packages options
+#	1.19	RD	Extroot scripts code improvements (3)
 #
 # Destination /sbin/install.sh
 #
-local CMD
+local CMD=""
 local OFFLINE_POST_INSTALL="1"
 local INCLUDE_INSTALLED="1"
-local HOST_NAME
+local HOST_NAME=""
 local BACKUP_ENABLE="1"
-local BACKUP_PATH
-local BACKUP_FILE
+local BACKUP_PATH=""
+local BACKUP_FILE=""
 local INSTALL_PATH="/tmp"
-local PACKAGES
-local DEPENDS
-local IMAGE_SOURCE
-local IMAGE_PREFIX
-local IMAGE_SUFFIX
+local PACKAGES=""
+local DEPENDS=""
+local IMAGE_SOURCE=""
+local IMAGE_PREFIX=""
+local IMAGE_SUFFIX=""
 local IMAGE_FILENAME="sysupgrade.bin"
 local POST_INSTALL_SCRIPT="post-installer"
 local POST_INSTALLER="/bin/$POST_INSTALL_SCRIPT.sh"
@@ -44,15 +45,15 @@ local EXTROOT_BYPASS_SCRIPT="extroot-bypass"
 local EXTROOT_BYPASSER="/bin/$EXTROOT_BYPASS_SCRIPT.sh"
 local INSTALLER_KEEP_FILE="/lib/upgrade/keep.d/$POST_INSTALL_SCRIPT"
 local RC_LOCAL="/etc/rc.local"
-local BIN_LOGGER
-local BIN_CAT
-local BIN_RM
-local BIN_SYNC
-local BIN_REBOOT
-local BIN_AWK
-local BIN_OPKG
-local BIN_SYSUPGRADE
-local BIN_PING
+local BIN_LOGGER=""
+local BIN_CAT=""
+local BIN_RM=""
+local BIN_SYNC=""
+local BIN_REBOOT=""
+local BIN_AWK=""
+local BIN_OPKG=""
+local BIN_SYSUPGRADE=""
+local BIN_PING=""
 
 check_exit_code() {
 	local CODE=$?
@@ -82,7 +83,9 @@ which_binary() {
 }
 
 add_to_keep_file() {
-	echo "$1">>$INSTALLER_KEEP_FILE
+	local CONTENT="$1"
+	local ROOT_PATH="$2"
+	echo "$1">>$ROOT_PATH$INSTALLER_KEEP_FILE
 	check_exit_code
 }
 
@@ -401,6 +404,7 @@ extroot_preapre() {
 			mkdir -p $MOUNT_POINT
 			mount -t jffs2 $ROOTFS_DATA_DEV $MOUNT_POINT
 			check_exit_code
+			echo "Copying fstab configuration from current to rootfs_data ..."
 			cp -f /etc/config/fstab $MOUNT_POINT/etc/config/fstab
 			add_to_keep_file $EXTROOT_BYPASSER
 			echo -e	"#!/bin/sh"\
@@ -476,7 +480,7 @@ installer_prepare() {
 			"\n$BIN_CAT $RC_LOCAL | $BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' >$RC_LOCAL"\
 			"\n$BIN_RM -f $POST_INSTALLER"\
 			"\n$BIN_SYNC"\
-			"\n# $BIN_REBOOT -f"\
+			"\n$BIN_REBOOT -f"\
 			"\n# Done.">>$POST_INSTALLER
 	check_exit_code
 	chmod 777 $POST_INSTALLER
