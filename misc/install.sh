@@ -63,14 +63,14 @@ check_exit_code() {
 	fi
 }
 
-get_mount_device() {
+get_mount_device() { # <Path to check>
 	local CHECK_PATH=$1
 	[ -L $CHECK_PATH ] && CHECK_PATH=$(ls -l $CHECK_PATH | awk -F " -> " '{print $2}')
 	echo $(awk -v path="$CHECK_PATH" 'BEGIN{FS=" ";device=""}path~"^"$2{if($2>point){device=$1;point=$2}}END{print device}' /proc/mounts)
 	check_exit_code
 }
 
-which_binary() {
+which_binary() { # <Variable> <Name of Binary>
 	local VARIABLE="$1"
 	local BINARY="$2"
 	local WHICH=$(which $BINARY)
@@ -82,14 +82,14 @@ which_binary() {
 	fi
 }
 
-add_to_keep_file() {
+add_to_keep_file() { # <Content to save> <Root path>
 	local CONTENT="$1"
 	local ROOT_PATH="$2"
 	echo "$1">>$ROOT_PATH$INSTALLER_KEEP_FILE
 	check_exit_code
 }
 
-package_execute_cmd() {
+package_execute_cmd() { # <Package name> <Command>
 	local PACKAGE="$1"
 	local CMD="$2"
 	if [ -x /etc/init.d/$PACKAGE ]; then
@@ -174,7 +174,7 @@ print_help() {
 	exit 0
 }
 
-initialize() {
+initialize() { # <Script parametrs>
 	while [ -n "$1" ]; do
 		case "$1" in
 			install|download|sysupgrade) CMD="$1";; 
