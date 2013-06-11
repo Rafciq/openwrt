@@ -8,10 +8,11 @@
 #	1.03	RD	Dodanie nazwy routera, zmiana formatowania
 #	1.04	RD	Kosmetyka, sugestie mikhnal. Zmiana przetwarzania info. o wan.
 #	1.05	RD	Zmiana algorytmu pobierania danych dla wan i lan
-#	1.06	RD	Parametryzacja kolorów i pojawiania siê podkreœleñ
-#	1.07	RD	Modyfikacja zwi¹zana z poprawnym wyœwietlaniem interfejsu dla prot.3g
-#	1.08	RD	Modyfikacja wyœwietlania DNS-ów dla wan, dodanie uptime dla interfejsów
-#	1.09	RD	Dodanie statusu "Down" dla wy³¹czonego wifi, zmiana wyœwietlania dla WLAN(sta)
+#	1.06	RD	Parametryzacja kolorów i pojawiania siê podkre¶leñ
+#	1.07	RD	Modyfikacja zwi±zana z poprawnym wy¶wietlaniem interfejsu dla prot.3g
+#	1.08	RD	Modyfikacja wy¶wietlania DNS-ów dla wan, dodanie uptime dla interfejsów
+#	1.09	RD	Dodanie statusu "Down" dla wy³±czonego wifi, zmiana wy¶wietlania dla WLAN(sta)
+#	1.10	RD	Korekta wy¶wietlania dla WLAN(sta)
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -278,7 +279,7 @@ print_wlan() {
 			if [ "$Mode" == "ap" ]; then
 				print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor, conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
 			else
-				print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor(device_rx_tx $RadioIface)"
+				print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor"
 				print_line "conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
 			fi
 		fi
@@ -319,4 +320,5 @@ print_lan
 print_wlan
 print_vpn
 [ "$EndRuler" == "1" ] && print_horizontal_ruler
-exit 
+exit 0
+# Done.
