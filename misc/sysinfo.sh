@@ -4,15 +4,16 @@
 # 
 #	1.00	CJ	Pierwsza wersja kodu
 #	1.01	RD	Drobna przebudowa
-#	1.02	RD	Korekta bledu wysw. zajetosci Flash-a, dodanie kolorow
+#	1.02	RD	Korekta b³êdu wyœw. zajetoœci Flash-a, dodanie kolorów
 #	1.03	RD	Dodanie nazwy routera, zmiana formatowania
-#	1.04	RD	Kosmetyka, sugestie mikhnal. Zmiana przetwarzania info. o wan.
+#	1.04	RD	Kosmetyka, sugestie @mikhnal. Zmiana przetwarzania info. o wan.
 #	1.05	RD	Zmiana algorytmu pobierania danych dla wan i lan
-#	1.06	RD	Parametryzacja kolorów i pojawiania siê podkre¶leñ
-#	1.07	RD	Modyfikacja zwi±zana z poprawnym wy¶wietlaniem interfejsu dla prot.3g
-#	1.08	RD	Modyfikacja wy¶wietlania DNS-ów dla wan, dodanie uptime dla interfejsów
-#	1.09	RD	Dodanie statusu "Down" dla wy³±czonego wifi, zmiana wy¶wietlania dla WLAN(sta)
-#	1.10	RD	Korekta wy¶wietlania dla WLAN(sta)
+#	1.06	RD	Parametryzacja kolorów i pojawiania siê podkreœleñ
+#	1.07	RD	Modyfikacja zwi¹zana z poprawnym wyœwietlaniem interfejsu dla prot.3g
+#	1.08	RD	Modyfikacja wyœwietlania DNS-ów dla wan, dodanie uptime dla interfejsów
+#	1.09	RD	Dodanie statusu "Down" dla wy³¹czonego wifi, zmiana wyœwietlania dla WLAN(sta)
+#	1.10	RD	Korekta wyœwietlania dla WLAN(sta)
+#	1.11	RD	Korekta wyœwietlania stanu pamiêci, sugestie @dopsz 
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -75,7 +76,7 @@ human_readable() {
 }
 
 device_rx_tx() {
-	local RXTX=$(awk -v Device=$1 '$1==Device ":"{printf "%d\t%d",$2,$10}' /proc/net/dev)
+	local RXTX=$(awk -v Device=$1 '$1==Device ":"{printf "%.0f\t%.0f",$2,$10}' /proc/net/dev)
 	[ "$RXTX" != "" ] && printf ", rx/tx: $RXTXColor$(human_readable $(echo "$RXTX" | cut -f 1))$NormalColor/$RXTXColor$(human_readable $(echo "$RXTX" | cut -f 2))$NormalColor"
 }
 
@@ -123,7 +124,7 @@ print_loadavg() {
 }
 
 print_flash() {
-	local Flash=$(df -k /overlay | awk '/overlay/{printf "%d\t%d\t%.1f",$4*1024,$2*1024,($2>0)?$3/$2*100:0}')
+	local Flash=$(df -k /overlay | awk '/overlay/{printf "%.0f\t%.0f\t%.1f",$4*1024,$2*1024,($2>0)?$3/$2*100:0}')
 	local Free=$(echo "$Flash" | cut -f 1)
 	local Total=$(echo "$Flash" | cut -f 2)
 	local Used=$(echo "$Flash" | cut -f 3)
@@ -131,7 +132,7 @@ print_flash() {
 }
 
 print_memory() {
-	local Memory=$(awk 'BEGIN{Total=0;Free=0}$1~/^MemTotal:/{Total=$2}$1~/^MemFree:|^Buffers:|^Cached:/{Free+=$2}END{printf"%d\t%d\t%.1f",Free*1024,Total*1024,(Total>0)?(((Total-Free)/Total)*100):0}' /proc/meminfo)
+	local Memory=$(awk 'BEGIN{Total=0;Free=0}$1~/^MemTotal:/{Total=$2}$1~/^MemFree:|^Buffers:|^Cached:/{Free+=$2}END{printf"%.0f\t%.0f\t%.1f",Free*1024,Total*1024,(Total>0)?(((Total-Free)/Total)*100):0}' /proc/meminfo)
 	local Free=$(echo "$Memory" | cut -f 1)
 	local Total=$(echo "$Memory" | cut -f 2)
 	local Used=$(echo "$Memory" | cut -f 3)
