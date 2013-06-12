@@ -14,6 +14,7 @@
 #	1.09	RD	Dodanie statusu "Down" dla wy³¹czonego wifi, zmiana wyœwietlania dla WLAN(sta)
 #	1.10	RD	Korekta wyœwietlania dla WLAN(sta)
 #	1.11	RD	Korekta wyœwietlania stanu pamiêci, sugestie @dopsz 
+#	1.12	RD	Zmiana kolejnoœci wyœwietlania wartoœci stanu pamiêci + kosmetyka 
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -29,7 +30,7 @@ local ValueColor
 local AddrColor
 local RXTXColor
 
-initialize() {
+initialize() { # <Script Parameters>
 	local ColorMode="1"
 	for Parameter in $@; do
 		case  $Parameter  in
@@ -67,7 +68,7 @@ initialize() {
 	done
 }
 
-human_readable() {
+human_readable() { # <Number of bytes>
 	if [ $1 -gt 0 ]; then
 		printf "$(awk -v n=$1 'BEGIN{for(i=split("B KB MB GB TB PB",suffix);s<1;i--)s=n/(2**(10*i));printf (int(s)==s)?"%.0f%s":"%.1f%s",s,suffix[i+2]}')"
 	else
@@ -75,12 +76,12 @@ human_readable() {
 	fi
 }
 
-device_rx_tx() {
+device_rx_tx() { # <Device>
 	local RXTX=$(awk -v Device=$1 '$1==Device ":"{printf "%.0f\t%.0f",$2,$10}' /proc/net/dev)
 	[ "$RXTX" != "" ] && printf ", rx/tx: $RXTXColor$(human_readable $(echo "$RXTX" | cut -f 1))$NormalColor/$RXTXColor$(human_readable $(echo "$RXTX" | cut -f 2))$NormalColor"
 }
 
-uptime_str() {
+uptime_str() { # <Time in Seconds>
 	local Uptime=$1
 	if [ $Uptime -gt 0 ]; then
 		local Days=$(expr $Uptime / 60 / 60 / 24)
@@ -96,8 +97,9 @@ uptime_str() {
 	fi
 }
 
-print_line() {
-	printf " | %-${Width}s |\r | $1\n"
+print_line() { # <String to Print>, [[<String to Print>] ...]
+	local Line="$@"
+	printf " | %-${Width}s |\r | $Line\n"
 }
 
 print_horizontal_ruler() {
@@ -108,35 +110,45 @@ print_machine() {
 	local Machine=""
 	local HostName=$(uci -q get system.@system[0].hostname)
 	[ -e /tmp/sysinfo/model ] && Machine=$(cat /tmp/sysinfo/model)
-	print_line "Machine: $MachineColor$Machine$NormalColor, Name: $MachineColor$HostName$NormalColor"
+	print_line 	"Machine: $MachineColor${Machine:-n/a}$NormalColor,"\
+				"Name: $MachineColor${HostName:-n/a}$NormalColor"
 }
 
-print_uptime() {
+print_times() {
 	local SysUptime=$(cut -d. -f1 /proc/uptime)
 	local Uptime=$(uptime_str $SysUptime)
 	local Now=$(date +'%Y-%m-%d %H:%M:%S')
-	print_line "Uptime: $ValueColor$Uptime$NormalColor, Now: $ValueColor$Now$NormalColor"
+	print_line 	"System uptime: $ValueColor$Uptime$NormalColor,"\
+				"Now: $ValueColor$Now$NormalColor"
 }
 
 print_loadavg() {
-	local LoadAvg=$(awk '{printf"%s, %s, %s",$1,$2,$3}' /proc/loadavg)
-	print_line "Load: $ValueColor$LoadAvg$NormalColor"
+	local LoadAvg=$(awk '{printf"'$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor'",$1,$2,$3}' /proc/loadavg)
+	print_line "System load: $LoadAvg"
 }
 
 print_flash() {
-	local Flash=$(df -k /overlay | awk '/overlay/{printf "%.0f\t%.0f\t%.1f",$4*1024,$2*1024,($2>0)?$3/$2*100:0}')
-	local Free=$(echo "$Flash" | cut -f 1)
-	local Total=$(echo "$Flash" | cut -f 2)
-	local Used=$(echo "$Flash" | cut -f 3)
-	print_line "Flash: free: $ValueColor$(human_readable $Free)$NormalColor, total: $ValueColor$(human_readable $Total)$NormalColor, used: $ValueColor$Used$NormalColor%%"
+	local Flash=$(df -k /overlay | awk '/overlay/{printf "%.0f\t%.0f\t%.1f\t%.0f",$2*1024,$3*1024,($2>0)?$3/$2*100:0,$4*1024}')
+	local Total=$(echo "$Flash" | cut -f 1)
+	local Used=$(echo "$Flash" | cut -f 2)
+	local UsedPercent=$(echo "$Flash" | cut -f 3)
+	local Free=$(echo "$Flash" | cut -f 4)
+	print_line 	"Flash:"\
+				"total: $ValueColor$(human_readable $Total)$NormalColor,"\
+				"used: $ValueColor$(human_readable $Used)$NormalColor, $ValueColor$UsedPercent$NormalColor%%,"\
+				"free: $ValueColor$(human_readable $Free)$NormalColor"
 }
 
 print_memory() {
-	local Memory=$(awk 'BEGIN{Total=0;Free=0}$1~/^MemTotal:/{Total=$2}$1~/^MemFree:|^Buffers:|^Cached:/{Free+=$2}END{printf"%.0f\t%.0f\t%.1f",Free*1024,Total*1024,(Total>0)?(((Total-Free)/Total)*100):0}' /proc/meminfo)
-	local Free=$(echo "$Memory" | cut -f 1)
-	local Total=$(echo "$Memory" | cut -f 2)
-	local Used=$(echo "$Memory" | cut -f 3)
-	print_line "Memory: free: $ValueColor$(human_readable $Free)$NormalColor, total: $ValueColor$(human_readable $Total)$NormalColor, used: $ValueColor$Used$NormalColor%%"
+	local Memory=$(awk 'BEGIN{Total=0;Free=0}$1~/^MemTotal:/{Total=$2}$1~/^MemFree:|^Buffers:|^Cached:/{Free+=$2}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' /proc/meminfo)
+	local Total=$(echo "$Memory" | cut -f 1)
+	local Used=$(echo "$Memory" | cut -f 2)
+	local UsedPercent=$(echo "$Memory" | cut -f 3)
+	local Free=$(echo "$Memory" | cut -f 4)
+	print_line "Memory:"\
+				"total: $ValueColor$(human_readable $Total)$NormalColor,"\
+				"used: $ValueColor$(human_readable $Used)$NormalColor, $ValueColor$UsedPercent$NormalColor%%,"\
+				"free: $ValueColor$(human_readable $Free)$NormalColor"
 }
 
 print_wan() {
@@ -153,8 +165,8 @@ print_wan() {
 				local IP6=""
 				local Subnet4=""
 				local Subnet6=""
-				local Gateway4="n/a"
-				local Gateway6="n/a"
+				local Gateway4=""
+				local Gateway6=""
 				local DNS=""
 				local Protocol=""
 				json_load "${Status:-{}}"
@@ -209,9 +221,12 @@ print_wan() {
 					done
 				fi
 				if [ "$State" == "1" ]; then
-					[ "$IP4" != "" ] && print_line "WAN: $AddrColor$IP4$NormalColor($Iface), gateway: $AddrColor$Gateway4$NormalColor"
-					[ "$IP6" != "" ] && print_line "WAN: $AddrColor$IP6$NormalColor($Iface), gateway: $AddrColor$Gateway6$NormalColor"
-					print_line "proto: $ValueColor$Protocol$NormalColor, uptime: $ValueColor$(uptime_str $Uptime)$NormalColor$(device_rx_tx $Iface)"
+					[ "$IP4" != "" ] && print_line 	"WAN: $AddrColor$IP4$NormalColor($Iface),"\
+													"gateway: $AddrColor${Gateway4:-n/a}$NormalColor"
+					[ "$IP6" != "" ] && print_line	"WAN: $AddrColor$IP6$NormalColor($Iface),"\
+													"gateway: $AddrColor${Gateway6:-n/a}$NormalColor"
+					print_line	"proto: $ValueColor${Protocol:-n/a}$NormalColor,"\
+								"uptime: $ValueColor$(uptime_str $Uptime)$NormalColor$(device_rx_tx $Iface)"
 					[ "$DNS" != "" ] && print_line "dns: $AddrColor$DNS$NormalColor"
 				fi
 			fi
@@ -278,10 +293,13 @@ print_wlan() {
 				fi
 			fi
 			if [ "$Mode" == "ap" ]; then
-				print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor, conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
+				print_line	"WLAN: $ValueColor$SSID$NormalColor($Mode),"\
+							"ch: $ValueColor${Channel:-n/a}$NormalColor,"\
+							"conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
 			else
-				print_line "WLAN: $ValueColor$SSID$NormalColor($Mode), ch: $ValueColor$Channel$NormalColor"
-				print_line "conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
+				print_line	"WLAN: $ValueColor$SSID$NormalColor($Mode),"\
+							"ch: $ValueColor${Channel:-n/a}$NormalColor"
+				print_line	"conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
 			fi
 		fi
 	done
@@ -304,7 +322,8 @@ print_vpn() {
 				Connection="Down"
 				ifconfig $Device &>/dev/null && Connection="Up"
 			fi
-			print_line "VPN: $Mode, conn: $ValueColor$Connection$NormalColor$(device_rx_tx $Device)"
+			print_line	"VPN: $Mode,"\
+						"conn: $ValueColor$Connection$NormalColor$(device_rx_tx $Device)"
 		fi
 	done
 }
@@ -312,7 +331,7 @@ print_vpn() {
 initialize $@
 [ "$StartRuler" == "1" ] && print_horizontal_ruler
 print_machine
-print_uptime
+print_times
 print_loadavg
 print_flash
 print_memory
