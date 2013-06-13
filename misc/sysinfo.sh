@@ -25,46 +25,60 @@ local Width=60
 local StartRuler="1"
 local EndRuler="1"
 local Rouler
-local NormalColor
-local MachineColor
-local ValueColor
-local AddrColor
-local RXTXColor
+local NormalColor=""
+local MachineColor=""
+local ValueColor=""
+local AddrColor=""
+local RXTXColor=""
+local ExtraName=""
+local ExtraValue=""
 
 initialize() { # <Script Parameters>
-	local ColorMode="1"
+	local ColorMode="c"
 	while [ -n "$1" ]; do
 		case "$1" in
-		-m|--mono) ColorMode="0";;
+		-m|--mono) ColorMode="m";;
+		-bw|--black-white) ColorMode="bw";;
+		-c2|--color-2) ColorMode="c2";;
 		-sr|--no-start-ruler) StartRuler="0";;
 		-er|--no-stop-ruler) EndRuler="0";;
 		-w|--width) shift; Width=$1;;
-		-h|--help)	
-			echo "Usage: $0 - [option [option]]"
-			echo "	-h		This help,"
-			echo "	-m		Display mono version,"
-			echo "	-sr		Without start horizontal ruler,"	
-			echo "	-er		Without end horizontal ruler,"	
-			echo "	-w N	Set display width to N characters"	
-			exit 1;;
+		-en|--extra-name) shift; ExtraName=$1;;
+		-ev|--extra-value) shift; ExtraValue=$1;;
+		-h|--help)	echo -e	"Usage: $0 [option [option]]"\
+							"\n\t-h\t\tThis help,"\
+							"\n\t-m\t\tDisplay mono version,"\
+							"\n\t-bw\t\tDisplay black-white version,"\
+							"\n\t-c2\t\tDisplay alternative color version 2,"\
+							"\n\t-sr\t\tWithout start horizontal ruler,"\
+							"\n\t-er\t\tWithout end horizontal ruler,"\
+							"\n\t-w N\t\tSet text display width to N characters (minimum 60)"\
+							"\n\t-en Name\tExtra name"\
+							"\n\t-ev Value\tExtra value"
+					exit 1;;
 		*) echo "Invalid option: $1";;
 		esac
 		shift;
 	done
-	if [ "$ColorMode" == "1" ]; then
-		NormalColor="\e[0m"
-		MachineColor="\e[0;33m"
-		ValueColor="\e[1;36m"
-		AddrColor="\e[1;31m"
-		RXTXColor="\e[2;32m"
-	else
-		NormalColor="\e[0m"
-		MachineColor="\e[7m"
-		ValueColor="\e[1m"
-		AddrColor="\e[4m"
-		RXTXColor="\e[1m"
-	fi
-	[ "$Width" -lt 60 ] && Width=60
+	case "$ColorMode" in
+		c)	NormalColor="\e[0m"
+			MachineColor="\e[0;33m"
+			ValueColor="\e[1;36m"
+			AddrColor="\e[1;31m"
+			RXTXColor="\e[2;32m";;
+		c2)	NormalColor="\e[0m"
+			MachineColor="\e[0;31m"
+			ValueColor="\e[0;33m"
+			AddrColor="\e[0;35m"
+			RXTXColor="\e[0;36m";;
+		m)	NormalColor="\e[0m"
+			MachineColor="\e[7m"
+			ValueColor="\e[1m"
+			AddrColor="\e[4m"
+			RXTXColor="\e[1m";;
+		*)	;;
+	esac
+	([ "$Width" == "" ] || [ "$Width" -lt 60 ]) && Width=60
 	local i
 	for i in $(seq $(expr $Width + 4 )); do 
 		Rouler="$Rouler-";
@@ -357,6 +371,7 @@ print_wan
 print_lan
 print_wlan
 print_vpn
+([ "$ExtraName" != "" ] || [ "$ExtraValue" != "" ]) && print_line "$ExtraName $ValueColor$ExtraValue$NormalColor"
 [ "$EndRuler" == "1" ] && print_horizontal_ruler
 exit 0
 # Done.
