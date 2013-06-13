@@ -185,7 +185,7 @@ initialize() { # <Script parametrs>
 			-*) echo "Invalid option: $1";print_help;;
 			*) echo "Invalid command: $1";print_help;;
 		esac
-	shift;
+		shift;
 	done
 	[ "$CMD" == "" ] && CMD=install
 	HOST_NAME=$(uci -q get system.@system[0].hostname)
