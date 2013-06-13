@@ -15,6 +15,7 @@
 #	1.10	RD	Korekta wyœwietlania dla WLAN(sta)
 #	1.11	RD	Korekta wyœwietlania stanu pamiêci, sugestie @dopsz 
 #	1.12	RD	Zmiana kolejnoœci wyœwietlania wartoœci stanu pamiêci + kosmetyka 
+#	1.13	RD	Dodanie info o dhcp w LAN, zmiana sposobu wyœwietlania informacji o LAN
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -32,22 +33,23 @@ local RXTXColor
 
 initialize() { # <Script Parameters>
 	local ColorMode="1"
-	for Parameter in $@; do
-		case  $Parameter  in
-		-m) ColorMode="0";;
-		-sr) StartRuler="0";;
-		-er) EndRuler="0";;
-		-w1) Width=80;;
-		-w2) Width=100;;
-		-w3) Width=120;;
-		-h|*)	
-			echo "Usage: $0 - [parameter]"
-			echo "	-h	: This help."
-			echo "	-m	: Display mono version."
-			echo "	-sr	: Without start horizontal ruler."	
-			echo "	-er	: Without end horizontal ruler."	
+	while [ -n "$1" ]; do
+		case "$1" in
+		-m|--mono) ColorMode="0";;
+		-sr|--no-start-ruler) StartRuler="0";;
+		-er|--no-stop-ruler) EndRuler="0";;
+		-w|--width) shift; Width=$1;;
+		-h|--help)	
+			echo "Usage: $0 - [option [option]]"
+			echo "	-h		This help,"
+			echo "	-m		Display mono version,"
+			echo "	-sr		Without start horizontal ruler,"	
+			echo "	-er		Without end horizontal ruler,"	
+			echo "	-w N	Set display width to N characters"	
 			exit 1;;
+		*) echo "Invalid option: $1";;
 		esac
+		shift;
 	done
 	if [ "$ColorMode" == "1" ]; then
 		NormalColor="\e[0m"
@@ -62,6 +64,7 @@ initialize() { # <Script Parameters>
 		AddrColor="\e[4m"
 		RXTXColor="\e[1m"
 	fi
+	[ "$Width" -lt 60 ] && Width=60
 	local i
 	for i in $(seq $(expr $Width + 4 )); do 
 		Rouler="$Rouler-";
@@ -155,122 +158,137 @@ print_wan() {
 	local Zone
 	local Device
 	for Zone in $(uci -q show firewall | grep .masq= | cut -f2 -d.); do
-		for Device in $(uci -q get firewall.$Zone.network); do
-			local Status="$(ubus call network.interface.$Device status 2>/dev/null)"
-			if [ "$Status" != "" ]; then
-				local State=""
-				local Iface=""
-				local Uptime=""
-				local IP4=""
-				local IP6=""
-				local Subnet4=""
-				local Subnet6=""
-				local Gateway4=""
-				local Gateway6=""
-				local DNS=""
-				local Protocol=""
-				json_load "${Status:-{}}"
-				json_get_var State up
-				json_get_var Uptime uptime
-				json_get_var Iface l3_device
-				json_get_var Protocol proto
-				if json_get_type Status ipv4_address && [ "$Status" = array ]; then
-					json_select ipv4_address
-					json_get_type Status 1
-					if [ "$Status" = object ]; then
-						json_select 1
-						json_get_var IP4 address
-						json_get_var Subnet4 mask
-						[ "$IP4" != "" ] && [ "$Subnet4" != "" ] && IP4="$IP4/$Subnet4"
+		if [ "$(uci -q get firewall.$Zone.masq)" == "1" ]; then
+			for Device in $(uci -q get firewall.$Zone.network); do
+				local Status="$(ubus call network.interface.$Device status 2>/dev/null)"
+				if [ "$Status" != "" ]; then
+					local State=""
+					local Iface=""
+					local Uptime=""
+					local IP4=""
+					local IP6=""
+					local Subnet4=""
+					local Subnet6=""
+					local Gateway4=""
+					local Gateway6=""
+					local DNS=""
+					local Protocol=""
+					json_load "${Status:-{}}"
+					json_get_var State up
+					json_get_var Uptime uptime
+					json_get_var Iface l3_device
+					json_get_var Protocol proto
+					if json_get_type Status ipv4_address && [ "$Status" = array ]; then
+						json_select ipv4_address
+						json_get_type Status 1
+						if [ "$Status" = object ]; then
+							json_select 1
+							json_get_var IP4 address
+							json_get_var Subnet4 mask
+							[ "$IP4" != "" ] && [ "$Subnet4" != "" ] && IP4="$IP4/$Subnet4"
+						fi
+					fi
+					json_select
+					if json_get_type Status ipv6_address && [ "$Status" = array ]; then
+						json_select ipv6_address
+						json_get_type Status 1
+						if [ "$Status" = object ]; then
+							json_select 1
+							json_get_var IP6 address
+							json_get_var Subnet6 mask
+							[ "$IP6" != "" ] && [ "$Subnet6" != "" ] && IP6="$IP6/$Subnet6"
+						fi
+					fi
+					json_select
+					if json_get_type Status route && [ "$Status" = array ]; then
+						json_select route
+						local Index="1"
+						while json_get_type Status $Index && [ "$Status" = object ]; do
+							json_select "$((Index++))"
+							json_get_var Status target
+							case "$Status" in
+								0.0.0.0)
+									json_get_var Gateway4 nexthop;;
+								::)
+									json_get_var Gateway6 nexthop;;
+							esac
+							json_select ".."
+						done	
+					fi
+					json_select
+					if json_get_type Status dns_server && [ "$Status" = array ]; then
+						json_select dns_server
+						local Index="1"
+						while json_get_type Status $Index && [ "$Status" = string ]; do
+							json_get_var Status "$((Index++))"
+							DNS="${DNS:+$DNS }$Status"
+						done
+					fi
+					if [ "$State" == "1" ]; then
+						[ "$IP4" != "" ] && print_line 	"WAN: $AddrColor$IP4$NormalColor($Iface),"\
+														"gateway: $AddrColor${Gateway4:-n/a}$NormalColor"
+						[ "$IP6" != "" ] && print_line	"WAN: $AddrColor$IP6$NormalColor($Iface),"\
+														"gateway: $AddrColor${Gateway6:-n/a}$NormalColor"
+						print_line	"proto: $ValueColor${Protocol:-n/a}$NormalColor,"\
+									"uptime: $ValueColor$(uptime_str $Uptime)$NormalColor$(device_rx_tx $Iface)"
+						[ "$DNS" != "" ] && print_line "dns: $AddrColor$DNS$NormalColor"
 					fi
 				fi
-				json_select
-				if json_get_type Status ipv6_address && [ "$Status" = array ]; then
-					json_select ipv6_address
-					json_get_type Status 1
-					if [ "$Status" = object ]; then
-						json_select 1
-						json_get_var IP6 address
-						json_get_var Subnet6 mask
-						[ "$IP6" != "" ] && [ "$Subnet6" != "" ] && IP6="$IP6/$Subnet6"
-					fi
-				fi
-				json_select
-				if json_get_type Status route && [ "$Status" = array ]; then
-					json_select route
-					local Index="1"
-					while json_get_type Status $Index && [ "$Status" = object ]; do
-						json_select "$((Index++))"
-						json_get_var Status target
-						case "$Status" in
-							0.0.0.0)
-								json_get_var Gateway4 nexthop;;
-							::)
-								json_get_var Gateway6 nexthop;;
-						esac
-						json_select ".."
-					done	
-				fi
-				json_select
-				if json_get_type Status dns_server && [ "$Status" = array ]; then
-					json_select dns_server
-					local Index="1"
-					while json_get_type Status $Index && [ "$Status" = string ]; do
-						json_get_var Status "$((Index++))"
-						DNS="${DNS:+$DNS }$Status"
-					done
-				fi
-				if [ "$State" == "1" ]; then
-					[ "$IP4" != "" ] && print_line 	"WAN: $AddrColor$IP4$NormalColor($Iface),"\
-													"gateway: $AddrColor${Gateway4:-n/a}$NormalColor"
-					[ "$IP6" != "" ] && print_line	"WAN: $AddrColor$IP6$NormalColor($Iface),"\
-													"gateway: $AddrColor${Gateway6:-n/a}$NormalColor"
-					print_line	"proto: $ValueColor${Protocol:-n/a}$NormalColor,"\
-								"uptime: $ValueColor$(uptime_str $Uptime)$NormalColor$(device_rx_tx $Iface)"
-					[ "$DNS" != "" ] && print_line "dns: $AddrColor$DNS$NormalColor"
-				fi
-			fi
-		done
+			done
+		fi 
 	done
 }
 
 print_lan() {
-	local Device="lan"
-	local State
-	local Iface
-	local IP4
-	local IP6
-	local Subnet4
-	local Subnet6
-	local Status="$(ubus call network.interface.$Device status 2>/dev/null)"
-	if [ "$Status" != "" ]; then
-		json_load "${Status:-{}}"
-		json_get_var State up
-		json_get_var Iface device
-		if json_get_type Status ipv4_address && [ "$Status" = array ]; then
-			json_select ipv4_address
-			json_get_type Status 1
-			if [ "$Status" = object ]; then
-				json_select 1
-				json_get_var IP4 address
-				json_get_var Subnet4 mask
-				[ "$IP4" != "" ] && [ "$Subnet4" != "" ] && IP4="$IP4/$Subnet4"
-			fi
-		fi
-		json_select
-		if json_get_type Status ipv6_address && [ "$Status" = array ]; then
-			json_select ipv6_address
-			json_get_type Status 1
-			if [ "$Status" = object ]; then
-				json_select 1
-				json_get_var IP6 address
-				json_get_var Subnet6 mask
-				[ "$IP6" != "" ] && [ "$Subnet6" != "" ] && IP6="$IP6/$Subnet6"
-			fi
-		fi
-		[ "$IP4" != "" ] && print_line "LAN: $AddrColor$IP4$NormalColor"
-		[ "$IP6" != "" ] && print_line "LAN: $AddrColor$IP6$NormalColor"
-	fi
+	local Zone
+	local Device
+	for Zone in $(uci -q show firewall | grep []]=zone | cut -f2 -d. | cut -f1 -d=); do
+		if [ "$(uci -q get firewall.$Zone.masq)" != "1" ]; then
+			for Device in $(uci -q get firewall.$Zone.network); do
+				local Status="$(ubus call network.interface.$Device status 2>/dev/null)"
+				if [ "$Status" != "" ]; then
+					local State=""
+					local Iface=""
+					local IP4=""
+					local IP6=""
+					local Subnet4=""
+					local Subnet6=""
+					json_load "${Status:-{}}"
+					json_get_var State up
+					json_get_var Iface device
+					if json_get_type Status ipv4_address && [ "$Status" = array ]; then
+						json_select ipv4_address
+						json_get_type Status 1
+						if [ "$Status" = object ]; then
+							json_select 1
+							json_get_var IP4 address
+							json_get_var Subnet4 mask
+							[ "$IP4" != "" ] && [ "$Subnet4" != "" ] && IP4="$IP4/$Subnet4"
+						fi
+					fi
+					json_select
+					if json_get_type Status ipv6_address && [ "$Status" = array ]; then
+						json_select ipv6_address
+						json_get_type Status 1
+						if [ "$Status" = object ]; then
+							json_select 1
+							json_get_var IP6 address
+							json_get_var Subnet6 mask
+							[ "$IP6" != "" ] && [ "$Subnet6" != "" ] && IP6="$IP6/$Subnet6"
+						fi
+					fi
+					local DHCPConfig=$(uci -q show dhcp | grep .interface=$Device | cut -d. -f2)
+					if [ "$DHCPConfig" != "" ] && [ "$(uci -q get dhcp.$DHCPConfig.ignore)" != "1" ]; then
+						local DHCPStart=$(uci -q get dhcp.$DHCPConfig.start)
+						local DHCPLimit=$(uci -q get dhcp.$DHCPConfig.limit)
+						[ "$DHCPStart" != "" ] && [ "$DHCPLimit" != "" ] && DHCP="$(echo $IP4 | cut -d. -f1-3).$DHCPStart-$(expr $DHCPStart + $DHCPLimit - 1)"
+					fi
+					[ "$IP4" != "" ] && print_line "LAN: $AddrColor$IP4$NormalColor($Iface), dhcp: $AddrColor${DHCP:-n/a}$NormalColor"
+					[ "$IP6" != "" ] && print_line "LAN: $AddrColor$IP6$NormalColor($Iface)"
+				fi
+			done
+		fi 
+	done
 }
 
 print_wlan() {
