@@ -16,6 +16,7 @@
 #	1.11	RD	Korekta wyœwietlania stanu pamiêci, sugestie @dopsz 
 #	1.12	RD	Zmiana kolejnoœci wyœwietlania wartoœci stanu pamiêci + kosmetyka 
 #	1.13	RD	Dodanie info o dhcp w LAN, zmiana sposobu wyœwietlania informacji o LAN
+#	1.14	RD	Dodanie informacji o ostatnich b³êdach
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -30,6 +31,7 @@ local MachineColor=""
 local ValueColor=""
 local AddrColor=""
 local RXTXColor=""
+local ErrorColor=""
 local ExtraName=""
 local ExtraValue=""
 
@@ -43,8 +45,16 @@ initialize() { # <Script Parameters>
 		-sr|--no-start-ruler) StartRuler="0";;
 		-er|--no-stop-ruler) EndRuler="0";;
 		-w|--width) shift; Width=$1;;
-		-en|--extra-name) shift; ExtraName=$1;;
-		-ev|--extra-value) shift; ExtraValue=$1;;
+		-en|--extra-name)	while [ -n "$2" ] && [ "${2:0:1}" != "-" ]; do
+								shift
+								[ "$ExtraName" != "" ] && ExtraName="$ExtraName "
+								ExtraName="$ExtraName$1"
+							done;;
+		-ev|--extra-value)	while [ -n "$2" ] && [ "${2:0:1}" != "-" ]; do
+								shift
+								[ "$ExtraValue" != "" ] && ExtraValue="$ExtraValue "
+								ExtraValue="$ExtraValue$1"
+							done;;
 		-h|--help)	echo -e	"Usage: $0 [option [option]]"\
 							"\n\t-h\t\tThis help,"\
 							"\n\t-m\t\tDisplay mono version,"\
@@ -65,17 +75,20 @@ initialize() { # <Script Parameters>
 			MachineColor="\e[0;33m"
 			ValueColor="\e[1;36m"
 			AddrColor="\e[1;31m"
-			RXTXColor="\e[2;32m";;
+			RXTXColor="\e[2;32m"
+			ErrorColor="\e[0;31m";;
 		c2)	NormalColor="\e[0m"
 			MachineColor="\e[0;31m"
 			ValueColor="\e[0;33m"
 			AddrColor="\e[0;35m"
-			RXTXColor="\e[0;36m";;
+			RXTXColor="\e[0;36m"
+			ErrorColor="\e[0;31m";;
 		m)	NormalColor="\e[0m"
 			MachineColor="\e[7m"
 			ValueColor="\e[1m"
 			AddrColor="\e[4m"
-			RXTXColor="\e[1m";;
+			RXTXColor="\e[1m"
+			ErrorColor="\e[4";;
 		*)	;;
 	esac
 	([ "$Width" == "" ] || [ "$Width" -lt 60 ]) && Width=60
@@ -360,6 +373,14 @@ print_vpn() {
 	done
 }
 
+print_extra() {
+	([ "$ExtraName" != "" ] || [ "$ExtraValue" != "" ]) && print_line "$ExtraName $ValueColor$ExtraValue$NormalColor"
+}
+
+print_error() {
+	logread | awk '/\w{3}+\.(err|warn|alert|emerg|crit)/{print " '$ErrorColor'"$0"'$NormalColor'"}'
+}
+
 initialize $@
 [ "$StartRuler" == "1" ] && print_horizontal_ruler
 print_machine
@@ -371,7 +392,8 @@ print_wan
 print_lan
 print_wlan
 print_vpn
-([ "$ExtraName" != "" ] || [ "$ExtraValue" != "" ]) && print_line "$ExtraName $ValueColor$ExtraValue$NormalColor"
+print_extra
 [ "$EndRuler" == "1" ] && print_horizontal_ruler
+print_error
 exit 0
 # Done.
