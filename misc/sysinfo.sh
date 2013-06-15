@@ -16,7 +16,7 @@
 #	1.11	RD	Korekta wyœwietlania stanu pamiêci, sugestie @dopsz 
 #	1.12	RD	Zmiana kolejnoœci wyœwietlania wartoœci stanu pamiêci + kosmetyka 
 #	1.13	RD	Dodanie info o dhcp w LAN, zmiana sposobu wyœwietlania informacji o LAN
-#	1.14	RD	Dodanie informacji o ostatnich b³êdach
+#	1.14	RD	Dodanie informacji o ostatnich 5 b³êdach
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -26,6 +26,7 @@ local Width=60
 local StartRuler="1"
 local EndRuler="1"
 local Rouler
+local LastErrors="1"
 local NormalColor=""
 local MachineColor=""
 local ValueColor=""
@@ -39,11 +40,24 @@ initialize() { # <Script Parameters>
 	local ColorMode="c"
 	while [ -n "$1" ]; do
 		case "$1" in
+		-h|--help)	echo -e	"Usage: $0 [-h|--help] [[-m|--mono]|[-bw|-black-white]|[-c2|--color-2]] [-sr|--no-start-ruler] [-er|--no-end-ruler]"\
+							"[-w N|--width N] [-en Name|--extra-name Name] [-ev Value|--extra-value Value] [-le|--no-last-err]"\
+							"\n\t-h\t\tThis help,"\
+							"\n\t-m\t\tDisplay mono version,"\
+							"\n\t-bw\t\tDisplay black-white version,"\
+							"\n\t-c2\t\tDisplay alternative color version 2,"\
+							"\n\t-sr\t\tWithout start horizontal ruler,"\
+							"\n\t-er\t\tWithout end horizontal ruler,"\
+							"\n\t-w N\t\tSet width of text area to N characters (minimum 60)"\
+							"\n\t-en Name\tPrint extra name"\
+							"\n\t-ev Value\tPrint extra value"\
+							"\n\t-le\t\tDon't display last errors"
+					exit 1;;
 		-m|--mono) ColorMode="m";;
 		-bw|--black-white) ColorMode="bw";;
 		-c2|--color-2) ColorMode="c2";;
 		-sr|--no-start-ruler) StartRuler="0";;
-		-er|--no-stop-ruler) EndRuler="0";;
+		-er|--no-end-ruler) EndRuler="0";;
 		-w|--width) shift; Width=$1;;
 		-en|--extra-name)	while [ -n "$2" ] && [ "${2:0:1}" != "-" ]; do
 								shift
@@ -55,18 +69,8 @@ initialize() { # <Script Parameters>
 								[ "$ExtraValue" != "" ] && ExtraValue="$ExtraValue "
 								ExtraValue="$ExtraValue$1"
 							done;;
-		-h|--help)	echo -e	"Usage: $0 [option [option]]"\
-							"\n\t-h\t\tThis help,"\
-							"\n\t-m\t\tDisplay mono version,"\
-							"\n\t-bw\t\tDisplay black-white version,"\
-							"\n\t-c2\t\tDisplay alternative color version 2,"\
-							"\n\t-sr\t\tWithout start horizontal ruler,"\
-							"\n\t-er\t\tWithout end horizontal ruler,"\
-							"\n\t-w N\t\tSet text display width to N characters (minimum 60)"\
-							"\n\t-en Name\tExtra name"\
-							"\n\t-ev Value\tExtra value"
-					exit 1;;
-		*) echo "Invalid option: $1";;
+		-le|--no-last-err)	LastErrors="0";;
+		*) echo "Invalid option: $1. Use -h for help";;
 		esac
 		shift;
 	done
@@ -378,7 +382,7 @@ print_extra() {
 }
 
 print_error() {
-	logread | awk '/\w{3}+\.(err|warn|alert|emerg|crit)/{print " '$ErrorColor'"$0"'$NormalColor'"}'
+	logread | awk '/\w{3}+\.(err|warn|alert|emerg|crit)/{err[++i]=$0}END{j=i-4;j=j>=1?j:1;while(j<=i)print" '$ErrorColor'"err[j++]"'$NormalColor'"}'
 }
 
 initialize $@
@@ -394,6 +398,6 @@ print_wlan
 print_vpn
 print_extra
 [ "$EndRuler" == "1" ] && print_horizontal_ruler
-print_error
+[ "$LastErrors" == "1" ] && print_error
 exit 0
 # Done.
