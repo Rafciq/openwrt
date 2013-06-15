@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.20 Rafal Drzymala 2013
+# Script version 1.21 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -23,6 +23,7 @@
 #	1.18	RD	Include installed packages options
 #	1.19	RD	Extroot scripts code improvements (3)
 #	1.20	RD	Add status led toggle
+#	1.21	RD	Correct rc.local manipulation code
 #
 # Destination /sbin/install.sh
 #
@@ -49,6 +50,7 @@ local RC_LOCAL="/etc/rc.local"
 local BIN_LOGGER=""
 local BIN_CAT=""
 local BIN_RM=""
+local BIN_MV=""
 local BIN_SYNC=""
 local BIN_REBOOT=""
 local BIN_AWK=""
@@ -232,6 +234,7 @@ initialize() { # <Script parametrs>
 	which_binary BIN_LOGGER logger
 	which_binary BIN_CAT cat
 	which_binary BIN_RM rm
+	which_binary BIN_MV mv
 	which_binary BIN_SYNC sync
 	which_binary BIN_REBOOT reboot
 	which_binary BIN_AWK awk
@@ -426,7 +429,8 @@ extroot_preapre() {
 					"\n\t$POST_INSTALLER &\n"\
 					"\nfi"\
 					"\n$BIN_LOGGER -p user.notice -t $EXTROOT_BYPASS_SCRIPT \"Stop extroot bypass, cleaning and force reboot if need\""\
-					"\n$BIN_CAT $RC_LOCAL | $BIN_AWK -v installer=\"$EXTROOT_BYPASSER\" '\$0!~installer' >$RC_LOCAL"\
+					"\n$BIN_AWK -v installer=\"$EXTROOT_BYPASSER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL.tmp"\
+					"\n$BIN_MV -f $RC_LOCAL.tmp $RC_LOCAL"\
 					"\n$BIN_RM -f $EXTROOT_BYPASSER"\
 					"\n[ -n \"\$AT_END\" ] && \$AT_END"\
 					"\n# Done.">$MOUNT_POINT$EXTROOT_BYPASSER
@@ -480,7 +484,8 @@ installer_prepare() {
 	fi
 	echo -e	"$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop instalation of packages, cleaning and force reboot\""\
 			"\n$BIN_RM -f $INSTALLER_KEEP_FILE"\
-			"\n$BIN_CAT $RC_LOCAL | $BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' >$RC_LOCAL"\
+			"\n$BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL.tmp"\
+			"\n$BIN_MV -f $RC_LOCAL.tmp $RC_LOCAL"\
 			"\n$BIN_RM -f $POST_INSTALLER"\
 			"\n$BIN_SYNC"\
 			"\nset_state done"\
