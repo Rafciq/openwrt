@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.22 Rafal Drzymala 2013
+# Script version 1.23 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -26,6 +26,7 @@
 #	1.21	RD	Correct rc.local manipulation code
 #	1.22	RD	Add packages disabling to sysupgrade process
 #				Preparation scripts code improvements (5)
+#	1.23	RD	Extroot scripts code improvements
 #
 # Destination /sbin/install.sh
 #
@@ -440,13 +441,16 @@ extroot_preapre() {
 			echo "Copying fstab configuration from current to rootfs_data ..."
 			cp -f /etc/config/fstab $MOUNT_POINT/etc/config/fstab
 			echo "Setting autorun extroot bypass on next boot in $MOUNT_POINT$RC_LOCAL ..."
-			echo -e "[ -x $EXTROOT_BYPASSER ] && $EXTROOT_BYPASSER\n$(cat $MOUNT_POINT$RC_LOCAL)">$MOUNT_POINT$RC_LOCAL
+			echo -e "[ -x $EXTROOT_BYPASSER ] && $EXTROOT_BYPASSER && exit 0\n$(cat $MOUNT_POINT$RC_LOCAL)">$MOUNT_POINT$RC_LOCAL
 			check_exit_code
 			sync
 			check_exit_code
 			echo "Dismounting rootfs_data on $ROOTFS_DATA_DEV from $MOUNT_POINT ..."
 			umount $MOUNT_POINT
 			rmdir $MOUNT_POINT
+			echo "Refreshing mtd partitions rootfs_data"
+			mtd refresh rootfs_data
+			check_exit_code
 			echo "Extroot bypass prepared."
 		fi
 	fi
