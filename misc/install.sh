@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.24 Rafal Drzymala 2013
+# Script version 1.25 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -29,6 +29,7 @@
 #	1.23	RD	Extroot scripts code improvements
 #	1.24	RD	Added recurrence of checking of package dependences
 #				Changed packages initialization script name convention
+#	1.25	RD	Preparation scripts code improvements (6)
 #
 # Destination /sbin/install.sh
 #
@@ -48,21 +49,11 @@ local IMAGE_SUFFIX=""
 local IMAGE_FILENAME="sysupgrade.bin"
 local POST_INSTALL_SCRIPT="post-installer"
 local POST_INSTALLER="/bin/$POST_INSTALL_SCRIPT.sh"
+local POST_INSTALLER_LOG="/usr/$POST_INSTALL_SCRIPT.log"
 local EXTROOT_BYPASS_SCRIPT="extroot-bypass"
 local EXTROOT_BYPASSER="/bin/$EXTROOT_BYPASS_SCRIPT.sh"
 local INSTALLER_KEEP_FILE="/lib/upgrade/keep.d/$POST_INSTALL_SCRIPT"
 local RC_LOCAL="/etc/rc.local"
-local BIN_LOGGER=""
-local BIN_CAT=""
-local BIN_RM=""
-local BIN_MV=""
-local BIN_SYNC=""
-local BIN_REBOOT=""
-local BIN_AWK=""
-local BIN_GREP=""
-local BIN_OPKG=""
-local BIN_SYSUPGRADE=""
-local BIN_PING=""
 
 check_exit_code() {
 	local CODE=$?
@@ -79,16 +70,17 @@ get_mount_device() { # <Path to check>
 	check_exit_code
 }
 
-which_binary() { # <Variable> <Name of Binary>
-	local VARIABLE="$1"
-	local BINARY="$2"
-	local WHICH=$(which $BINARY)
-	if [ "$WHICH" == "" ]; then
-		echo "Binary $BINARY not found in system!"
-		exit 1
-	else
-		eval "export -- \"$VARIABLE=$WHICH\""
-	fi
+which_binary() { # <Name of Binary> [<Name of Binary> [...]]
+	while [ -n "$1" ]; do
+		local WHICH=$(which $1)
+		if [ "$WHICH" == "" ]; then
+			echo "Binary $1 not found in system!"
+			exit 1
+		else
+			eval "export -- \"BIN_$(echo $1 | tr '[a-z]' '[A-Z]')=$WHICH\""
+		fi
+		shift
+	done
 }
 
 add_to_keep_file() { # <Content to save> <Root path>
@@ -96,6 +88,10 @@ add_to_keep_file() { # <Content to save> <Root path>
 	local ROOT_PATH="$2"
 	echo "$1">>$ROOT_PATH$INSTALLER_KEEP_FILE
 	check_exit_code
+}
+
+add_to_post_installer_log() { # <Content to save>
+	echo "$(date) $1">>$POST_INSTALLER_LOG
 }
 
 package_script_execute() { # <Package> <Script name> <Command>
@@ -195,7 +191,7 @@ initialize() { # <Script parametrs>
 			-*) echo "Invalid option: $1";print_help;;
 			*) echo "Invalid command: $1";print_help;;
 		esac
-		shift;
+		shift
 	done
 	[ "$CMD" == "" ] && CMD=install
 	HOST_NAME=$(uci -q get system.@system[0].hostname)
@@ -238,17 +234,7 @@ initialize() { # <Script parametrs>
 			exit 1
 		fi
 	fi
-	which_binary BIN_LOGGER logger
-	which_binary BIN_CAT cat
-	which_binary BIN_RM rm
-	which_binary BIN_MV mv
-	which_binary BIN_SYNC sync
-	which_binary BIN_REBOOT reboot
-	which_binary BIN_AWK awk
-	which_binary BIN_GREP grep
-	which_binary BIN_OPKG opkg
-	which_binary BIN_SYSUPGRADE sysupgrade
-	which_binary BIN_PING ping
+	which_binary logger cat rm mv sync reboot awk grep opkg sysupgrade ping logread
 	echo "Operation $CMD on $HOST_NAME"
 }
 
@@ -447,6 +433,7 @@ extroot_preapre() {
 					"\n$BIN_AWK -v installer=\"$EXTROOT_BYPASSER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL.tmp"\
 					"\n$BIN_MV -f $RC_LOCAL.tmp $RC_LOCAL"\
 					"\n$BIN_RM -f $EXTROOT_BYPASSER"\
+					"\n$BIN_LOGREAD >>$POST_INSTALLER_LOG"\
 					"\n[ -n \"\$AT_END\" ] && \$AT_END"\
 					"\n# Done.">$MOUNT_POINT$EXTROOT_BYPASSER
 			check_exit_code
@@ -463,9 +450,10 @@ extroot_preapre() {
 			echo "Dismounting rootfs_data on $ROOTFS_DATA_DEV from $MOUNT_POINT ..."
 			umount $MOUNT_POINT
 			rmdir $MOUNT_POINT
-			echo "Refreshing mtd partitions rootfs_data"
+			echo "Refreshing mtd partition ..."
 			mtd refresh rootfs_data
 			check_exit_code
+			add_to_post_installer_log "Extroot bypass prepared"
 			echo "Extroot bypass prepared."
 		fi
 	fi
@@ -510,6 +498,7 @@ installer_prepare() {
 			"\n$BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL.tmp"\
 			"\n$BIN_MV -f $RC_LOCAL.tmp $RC_LOCAL"\
 			"\n$BIN_RM -f $POST_INSTALLER"\
+			"\n$BIN_LOGREAD >>$POST_INSTALLER_LOG"\
 			"\n$BIN_SYNC"\
 			"\nset_state done"\
 			"\n$BIN_REBOOT -f"\
@@ -522,6 +511,7 @@ installer_prepare() {
 	add_to_keep_file $RC_LOCAL
 	echo -e "[ -x $POST_INSTALLER ] && $POST_INSTALLER &\n$(cat $RC_LOCAL)">$RC_LOCAL
 	check_exit_code
+	add_to_post_installer_log "Packages installer prepared"
 	echo "Packages installer prepared."
 	extroot_preapre
 }
@@ -529,6 +519,7 @@ installer_prepare() {
 sysupgrade_execute() {
 	echo "Upgrading system from image $INSTALL_PATH/$IMAGE_FILENAME ..."
 	add_to_keep_file $0
+	add_to_post_installer_log "System upgrading run"
 	cd $INSTALL_PATH
 	sysupgrade $IMAGE_FILENAME
 }
