@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.23 Rafal Drzymala 2013
+# Script version 1.24 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -27,6 +27,8 @@
 #	1.22	RD	Add packages disabling to sysupgrade process
 #				Preparation scripts code improvements (5)
 #	1.23	RD	Extroot scripts code improvements
+#	1.24	RD	Added recurrence of checking of package dependences
+#				Changed packages initialization script name convention
 #
 # Destination /sbin/install.sh
 #
@@ -57,6 +59,7 @@ local BIN_MV=""
 local BIN_SYNC=""
 local BIN_REBOOT=""
 local BIN_AWK=""
+local BIN_GREP=""
 local BIN_OPKG=""
 local BIN_SYSUPGRADE=""
 local BIN_PING=""
@@ -95,15 +98,16 @@ add_to_keep_file() { # <Content to save> <Root path>
 	check_exit_code
 }
 
-package_execute_cmd() { # <Package name> <Command>
+package_script_execute() { # <Package> <Script name> <Command>
 	local PACKAGE="$1"
-	local CMD="$2"
-	if [ -x /etc/init.d/$PACKAGE ]; then
-		echo "Executing $PACKAGE $CMD"
+	local SCRIPT="$2"
+	local CMD="$3"
+	if [ -x $SCRIPT ]; then
+		echo "Executing $SCRIPT $CMD for package $PACKAGE"
 		if [ "$CMD" == "enable" ] || [ "$CMD" == "stop" ]; then
-			/etc/init.d/$PACKAGE $CMD
+			$SCRIPT $CMD
 		else
-			/etc/init.d/$PACKAGE $CMD
+			$SCRIPT $CMD
 			check_exit_code
 		fi
 	fi
@@ -158,7 +162,7 @@ print_help() {
 			"\n\t\t\t\tPath to backup have to on external device otherwise during system upgrade can be lost."\
 			"\n\t\t-o\t\tOnline packages installation by post-installer."\
 			"\n\t\t\t\tInternet connection is needed after system restart and before packages installation."\
-			"\n\t\t-e\t\tExclude installed packages. Only packages from configuration can be processed."\
+			"\n\t\t-i\t\tExclude installed packages. Only packages from configuration can be processed."\
 			"\n\nCurrent configuration:"\
 			"\n\tLocal install directory : '$(uci -q get system.@sysupgrade[0].localinstall)'"\
 			"\n\tConfiguration backup direcory : '$(uci -q get system.@sysupgrade[0].backupconfig)'"\
@@ -241,6 +245,7 @@ initialize() { # <Script parametrs>
 	which_binary BIN_SYNC sync
 	which_binary BIN_REBOOT reboot
 	which_binary BIN_AWK awk
+	which_binary BIN_GREP grep
 	which_binary BIN_OPKG opkg
 	which_binary BIN_SYSUPGRADE sysupgrade
 	which_binary BIN_PING ping
@@ -266,7 +271,11 @@ check_installed() {
 check_dependency() {
 	if [ "$PACKAGES" != "" ]; then 
 		echo "Checking packages dependency ..."
-		DEPENDS=$(opkg depends -A $PACKAGES | awk -v PKG="$PACKAGES " '$2==""{ORS=" ";if(!seen[$1]++ && index(PKG,$1" ")==0)print $1}')
+		local PACKAGES_COUNT=0
+		while [ "$(echo $PACKAGES $DEPENDS | wc -w)" != "$PACKAGES_COUNT" ]; do
+			PACKAGES_COUNT=$(echo $PACKAGES $DEPENDS | wc -w)
+			DEPENDS=$(opkg depends -A $PACKAGES $DEPENDS | awk -v PKG="$PACKAGES " '$2==""{ORS=" ";if(!seen[$1]++ && index(PKG,$1" ")==0)print $1}')
+		done
 		check_exit_code
 		echo "Packages: $PACKAGES."
 		[ "$DEPENDS" != "" ] && echo "Packages required: $DEPENDS."
@@ -309,9 +318,12 @@ config_restore() {
 packages_disable() {
 	if [ "$PACKAGES" != "" ]; then 
 		echo "Disabling packages ..."
+		local SCRIPT
 		for PACKAGE in $PACKAGES; do
-			package_execute_cmd $PACKAGE disable
-			package_execute_cmd $PACKAGE stop
+			for SCRIPT in $(opkg files $PACKAGE | grep /etc/init.d/); do
+				package_script_execute $PACKAGE $SCRIPT disable
+				package_script_execute $PACKAGE $SCRIPT stop
+			done
 		done
 		echo "Packages are disabled."
 	fi
@@ -320,9 +332,12 @@ packages_disable() {
 packages_enable() {
 	if [ "$PACKAGES" != "" ]; then 
 		echo "Enabling packages ..."
+		local SCRIPT
 		for PACKAGE in $PACKAGES; do
-			package_execute_cmd $PACKAGE enable
-			package_execute_cmd $PACKAGE start
+			for SCRIPT in $(opkg files $PACKAGE | grep /etc/init.d/); do
+				package_script_execute $PACKAGE $SCRIPT enable
+				package_script_execute $PACKAGE $SCRIPT start
+			done
 		done
 		echo "Packages are enabled."
 	fi
@@ -465,6 +480,7 @@ installer_prepare() {
 			"\nset_state preinit"\
 			"\nlocal PACKAGES=\"$PACKAGES\""\
 			"\nlocal PACKAGE"\
+			"\nlocal SCRIPT"\
 			"\n$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Start instalation of packages\"">$POST_INSTALLER
 	check_exit_code
 	if [ "$OFFLINE_POST_INSTALL" != "" ]; then
@@ -479,7 +495,9 @@ installer_prepare() {
 	echo -e "$BIN_OPKG update | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
 			"\nfor PACKAGE in \$PACKAGES; do"\
 			"\n\t$BIN_OPKG install \$PACKAGE | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
-			"\n\t[ -x /etc/init.d/\$PACKAGE ] && /etc/init.d/\$PACKAGE enable | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
+			"\n\tfor SCRIPT in \$($BIN_OPKG files \$PACKAGE | $BIN_GREP /etc/init.d/); do"\
+			"\n\t\t[ -x \$SCRIPT ] && \$SCRIPT enable | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
+			"\n\tdone"\
 			"\ndone">>$POST_INSTALLER
 	check_exit_code
 	if [ "$BACKUP_ENABLE" != "" ]; then
