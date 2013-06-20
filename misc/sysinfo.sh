@@ -18,6 +18,7 @@
 #	1.13	RD	Dodanie info o dhcp w LAN, zmiana sposobu wyœwietlania informacji o LAN
 #	1.14	RD	Dodanie informacji o ostatnich 5 b³êdach
 #	1.15	RD	Zmiana stderr
+#	1.16	RD	Dodanie wyœwietlania informacji o swap
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -176,6 +177,18 @@ print_memory() {
 	local UsedPercent=$(echo "$Memory" | cut -f 3)
 	local Free=$(echo "$Memory" | cut -f 4)
 	print_line "Memory:"\
+				"total: $ValueColor$(human_readable $Total)$NormalColor,"\
+				"used: $ValueColor$(human_readable $Used)$NormalColor, $ValueColor$UsedPercent$NormalColor%%,"\
+				"free: $ValueColor$(human_readable $Free)$NormalColor"
+}
+
+print_swap() {
+	local Swap=$(awk 'BEGIN{Total=0;Free=0}$1~/^SwapTotal:/{Total=$2}$1~/^SwapFree:/{Free=$2}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' /proc/meminfo 2>/dev/null)
+	local Total=$(echo "$Swap" | cut -f 1)
+	local Used=$(echo "$Swap" | cut -f 2)
+	local UsedPercent=$(echo "$Swap" | cut -f 3)
+	local Free=$(echo "$Swap" | cut -f 4)
+	[ "$Total" -gt 0 ] && print_line "Swap:"\
 				"total: $ValueColor$(human_readable $Total)$NormalColor,"\
 				"used: $ValueColor$(human_readable $Used)$NormalColor, $ValueColor$UsedPercent$NormalColor%%,"\
 				"free: $ValueColor$(human_readable $Free)$NormalColor"
@@ -388,6 +401,7 @@ print_times
 print_loadavg
 print_flash
 print_memory
+print_swap
 print_wan
 print_lan
 print_wlan
