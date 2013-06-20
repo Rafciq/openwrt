@@ -17,6 +17,7 @@
 #	1.12	RD	Zmiana kolejnoœci wyœwietlania wartoœci stanu pamiêci + kosmetyka 
 #	1.13	RD	Dodanie info o dhcp w LAN, zmiana sposobu wyœwietlania informacji o LAN
 #	1.14	RD	Dodanie informacji o ostatnich 5 b³êdach
+#	1.15	RD	Zmiana stderr
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -25,7 +26,6 @@
 local Width=60
 local StartRuler="1"
 local EndRuler="1"
-local Rouler
 local LastErrors="1"
 local NormalColor=""
 local MachineColor=""
@@ -96,22 +96,18 @@ initialize() { # <Script Parameters>
 		*)	;;
 	esac
 	([ "$Width" == "" ] || [ "$Width" -lt 60 ]) && Width=60
-	local i
-	for i in $(seq $(expr $Width + 4 )); do 
-		Rouler="$Rouler-";
-	done
 }
 
 human_readable() { # <Number of bytes>
 	if [ $1 -gt 0 ]; then
-		printf "$(awk -v n=$1 'BEGIN{for(i=split("B KB MB GB TB PB",suffix);s<1;i--)s=n/(2**(10*i));printf (int(s)==s)?"%.0f%s":"%.1f%s",s,suffix[i+2]}')"
+		printf "$(awk -v n=$1 'BEGIN{for(i=split("B KB MB GB TB PB",suffix);s<1;i--)s=n/(2**(10*i));printf (int(s)==s)?"%.0f%s":"%.1f%s",s,suffix[i+2]}' 2>/dev/null)"
 	else
 		printf "0B"
 	fi
 }
 
 device_rx_tx() { # <Device>
-	local RXTX=$(awk -v Device=$1 '$1==Device ":"{printf "%.0f\t%.0f",$2,$10}' /proc/net/dev)
+	local RXTX=$(awk -v Device=$1 '$1==Device ":"{printf "%.0f\t%.0f",$2,$10}' /proc/net/dev 2>/dev/null)
 	[ "$RXTX" != "" ] && printf ", rx/tx: $RXTXColor$(human_readable $(echo "$RXTX" | cut -f 1))$NormalColor/$RXTXColor$(human_readable $(echo "$RXTX" | cut -f 2))$NormalColor"
 }
 
@@ -133,17 +129,17 @@ uptime_str() { # <Time in Seconds>
 
 print_line() { # <String to Print>, [[<String to Print>] ...]
 	local Line="$@"
-	printf " | %-${Width}s |\r | $Line\n"
+	printf " | %-${Width}s |\r | $Line\n" 2>/dev/null
 }
 
 print_horizontal_ruler() {
-	printf " $Rouler\n"
+	printf "/%$(expr $Width + 4 )s\n" | tr ' /' '- ' 2>/dev/null
 }
 
 print_machine() {
 	local Machine=""
 	local HostName=$(uci -q get system.@system[0].hostname)
-	[ -e /tmp/sysinfo/model ] && Machine=$(cat /tmp/sysinfo/model)
+	[ -e /tmp/sysinfo/model ] && Machine=$(cat /tmp/sysinfo/model 2>/dev/null)
 	print_line 	"Machine: $MachineColor${Machine:-n/a}$NormalColor,"\
 				"Name: $MachineColor${HostName:-n/a}$NormalColor"
 }
@@ -157,12 +153,12 @@ print_times() {
 }
 
 print_loadavg() {
-	local LoadAvg=$(awk '{printf"'$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor'",$1,$2,$3}' /proc/loadavg)
+	local LoadAvg=$(awk '{printf"'$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor'",$1,$2,$3}' /proc/loadavg 2>/dev/null)
 	print_line "System load: $LoadAvg"
 }
 
 print_flash() {
-	local Flash=$(df -k /overlay | awk '/overlay/{printf "%.0f\t%.0f\t%.1f\t%.0f",$2*1024,$3*1024,($2>0)?$3/$2*100:0,$4*1024}')
+	local Flash=$(df -k /overlay | awk '/overlay/{printf "%.0f\t%.0f\t%.1f\t%.0f",$2*1024,$3*1024,($2>0)?$3/$2*100:0,$4*1024}' 2>/dev/null)
 	local Total=$(echo "$Flash" | cut -f 1)
 	local Used=$(echo "$Flash" | cut -f 2)
 	local UsedPercent=$(echo "$Flash" | cut -f 3)
@@ -174,7 +170,7 @@ print_flash() {
 }
 
 print_memory() {
-	local Memory=$(awk 'BEGIN{Total=0;Free=0}$1~/^MemTotal:/{Total=$2}$1~/^MemFree:|^Buffers:|^Cached:/{Free+=$2}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' /proc/meminfo)
+	local Memory=$(awk 'BEGIN{Total=0;Free=0}$1~/^MemTotal:/{Total=$2}$1~/^MemFree:|^Buffers:|^Cached:/{Free+=$2}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' /proc/meminfo 2>/dev/null)
 	local Total=$(echo "$Memory" | cut -f 1)
 	local Used=$(echo "$Memory" | cut -f 2)
 	local UsedPercent=$(echo "$Memory" | cut -f 3)
@@ -336,9 +332,9 @@ print_wlan() {
 			local Connection="Down"
 			if [ -n "$RadioIface" ]; then
 				if [ "$Mode" == "ap" ]; then
-					Connection="$(iw dev $RadioIface station dump | grep Station | wc -l)"
+					Connection="$(iw dev $RadioIface station dump | grep Station | wc -l 2>/dev/null)"
 				else
-					Connection="$(iw dev $RadioIface link | awk 'BEGIN{FS=": ";Signal="";Bitrate=""} $1~/signal/ {Signal=$2} $1~/tx bitrate/ {Bitrate=$2}END{print Signal" "Bitrate}')"
+					Connection="$(iw dev $RadioIface link | awk 'BEGIN{FS=": ";Signal="";Bitrate=""} $1~/signal/ {Signal=$2} $1~/tx bitrate/ {Bitrate=$2}END{print Signal" "Bitrate}' 2>/dev/null)"
 				fi
 			fi
 			if [ "$Mode" == "ap" ]; then
@@ -365,7 +361,7 @@ print_vpn() {
 			if [ "$Mode" == "server" ]; then
 				Mode="$ValueColor$VPN$NormalColor(svr):$(uci -q get openvpn.$VPN.port)"
 				Status=$(uci -q get openvpn.$VPN.status)
-				Connection=$(awk 'BEGIN{FS=",";c=0;l=0}{if($1=="Common Name")l=1;else if($1=="ROUTING TABLE")exit;else if (l==1) c=c+1}END{print c}' $Status)
+				Connection=$(awk 'BEGIN{FS=",";c=0;l=0}{if($1=="Common Name")l=1;else if($1=="ROUTING TABLE")exit;else if (l==1) c=c+1}END{print c}' $Status 2>/dev/null)
 			else
 				Mode="$ValueColor$VPN$NormalColor(cli)"
 				Connection="Down"
@@ -382,7 +378,7 @@ print_extra() {
 }
 
 print_error() {
-	logread | awk '/\w{3}+\.(err|warn|alert|emerg|crit)/{err[++i]=$0}END{j=i-4;j=j>=1?j:1;while(j<=i)print" '$ErrorColor'"err[j++]"'$NormalColor'"}'
+	logread | awk '/\w{3}+\.(err|warn|alert|emerg|crit)/{err[++i]=$0}END{j=i-4;j=j>=1?j:1;while(j<=i)print" '$ErrorColor'"err[j++]"'$NormalColor'"}' 2>/dev/null
 }
 
 initialize $@
