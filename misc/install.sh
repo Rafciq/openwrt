@@ -261,13 +261,13 @@ check_dependency() {
 		local PACKAGES_COUNT=0
 		while [ "$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)" != "$PACKAGES_COUNT" ]; do
 			PACKAGES_COUNT=$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)
-			DEPENDS=$($BIN_OPKG depends -A $PACKAGES $DEPENDS | $BIN_AWK -v PKG="$PACKAGES " '$2==""{ORS="";if(!seen[$1]++ && index(PKG,$1" ")==0)print " "$1}')
+			DEPENDS=$DEPENDS$($BIN_OPKG depends -A $DEPENDS $PACKAGES | $BIN_AWK -v PKG="$DEPENDS $PACKAGES " '$2==""{ORS="";if(!seen[$1]++ && index(PKG,$1" ")==0)print " "$1}')
 		done
 		check_exit_code
 		$BIN_ECHO "Main packages: $PACKAGES."
 		if [ "$DEPENDS" != "" ]; then
 			$BIN_ECHO "Additional packages:$DEPENDS."
-			PACKAGES="$PACKAGES$DEPENDS"
+			PACKAGES="$DEPENDS $PACKAGES"
 		fi
 	fi
 }
