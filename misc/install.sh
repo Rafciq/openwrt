@@ -437,7 +437,10 @@ installer_prepare() {
 			"\n\tfor PACKAGE in \$PACKAGES; do"\
 			"\n\t\t$BIN_OPKG install \$PACKAGE | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
 			"\n\t\tfor SCRIPT in \$($BIN_OPKG files \$PACKAGE | $BIN_GREP /etc/init.d/); do"\
-			"\n\t\t\t[ -x \$SCRIPT ] && \$SCRIPT enable | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
+			"\n\t\t\tif [ -x \$SCRIPT ]; then"\
+			"\n\t\t\t\t$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Executing \$SCRIPT enable for package \$PACKAGE\""\
+			"\n\t\t\t\t\$SCRIPT enable | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
+			"\n\t\t\tfi"\
 			"\n\t\tdone"\
 			"\n\tdone">>$POST_INSTALLER
 	check_exit_code
