@@ -44,7 +44,6 @@ local BACKUP_PATH=""
 local BACKUP_FILE=""
 local INSTALL_PATH="/tmp"
 local PACKAGES=""
-local DEPENDS=""
 local IMAGE_SOURCE=""
 local IMAGE_PREFIX=""
 local IMAGE_SUFFIX=""
@@ -246,10 +245,10 @@ update_repository() {
 
 check_installed() {
 	$BIN_ECHO "Checking installed packages ..."
-	local INSTALLED=$($BIN_AWK -v PKG="$PACKAGES " 'BEGIN{FS=": ";ORS=" "}/^Package\: /{Package=$2}/^Status\: / && /user installed/{if(index(PKG,Package" ")==0)print Package}' /usr/lib/opkg/status)
+	local INSTALLED=$($BIN_AWK -v PKG="$PACKAGES " 'BEGIN{FS=": ";ORS=""}/^Package\: /{Package=$2}/^Status\: / && /user installed/{if(index(PKG,Package" ")==0)print " "Package}' /usr/lib/opkg/status)
 	if [ "$INSTALLED" != "" ]; then
-		$BIN_ECHO "Installed packages not in configuration: $INSTALLED."
-		PACKAGES="$PACKAGES $INSTALLED"
+		$BIN_ECHO "Installed packages not in configuration:$INSTALLED."
+		PACKAGES="$PACKAGES$INSTALLED"
 	else
 		$BIN_ECHO "All packages from configuration."
 	fi
@@ -258,14 +257,18 @@ check_installed() {
 check_dependency() {
 	if [ "$PACKAGES" != "" ]; then 
 		$BIN_ECHO "Checking packages dependency ..."
+		local DEPENDS
 		local PACKAGES_COUNT=0
 		while [ "$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)" != "$PACKAGES_COUNT" ]; do
 			PACKAGES_COUNT=$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)
-			DEPENDS=$($BIN_OPKG depends -A $PACKAGES $DEPENDS | $BIN_AWK -v PKG="$PACKAGES " '$2==""{ORS=" ";if(!seen[$1]++ && index(PKG,$1" ")==0)print $1}')
+			DEPENDS=$($BIN_OPKG depends -A $PACKAGES $DEPENDS | $BIN_AWK -v PKG="$PACKAGES " '$2==""{ORS="";if(!seen[$1]++ && index(PKG,$1" ")==0)print " "$1}')
 		done
 		check_exit_code
 		$BIN_ECHO "Main packages: $PACKAGES."
-		[ "$DEPENDS" != "" ] && $BIN_ECHO "Additional packages: $DEPENDS."
+		if [ "$DEPENDS" != "" ]; then
+			$BIN_ECHO "Additional packages:$DEPENDS."
+			PACKAGES="$PACKAGES$DEPENDS"
+		fi
 	fi
 }
 
@@ -340,18 +343,18 @@ packages_install() {
 }
 
 packages_download() {
-	if [ "$PACKAGES$DEPENDS" != "" ]; then 
+	if [ "$PACKAGES" != "" ]; then 
 		local PACKAGES_FILE="Packages"
 		local PACKAGES_LIST="$PACKAGES_FILE.gz"
 		$BIN_ECHO "Downloading packages to $INSTALL_PATH ..."
 		cd $INSTALL_PATH
 		$BIN_RM -f *.ipk
-		$BIN_OPKG download $PACKAGES $DEPENDS
+		$BIN_OPKG download $PACKAGES
 		check_exit_code
 		$BIN_ECHO "Building packages information ..."
 		[ -f $INSTALL_PATH/$PACKAGES_FILE ] && $BIN_RM -f $INSTALL_PATH/$PACKAGES_FILE
 		[ -f $INSTALL_PATH/$PACKAGES_LIST ] && $BIN_RM -f $INSTALL_PATH/$PACKAGES_LIST
-		for PACKAGE in $PACKAGES $DEPENDS; do
+		for PACKAGE in $PACKAGES; do
 			$BIN_ECHO "Getting information for package $PACKAGE."
 			$BIN_OPKG info $PACKAGE >>$INSTALL_PATH/$PACKAGES_FILE
 			check_exit_code
