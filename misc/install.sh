@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.27 Rafal Drzymala 2013
+# Script version 1.28 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -32,6 +32,7 @@
 #	1.25	RD	Preparation scripts code improvements (6)
 #	1.26	RD	Preparation scripts code improvements (7)
 #	1.27	RD	Code tune up
+#	1.28	RD	Code tune up
 #
 # Destination /sbin/install.sh
 #
@@ -244,13 +245,16 @@ update_repository() {
 }
 
 check_installed() {
-	$BIN_ECHO "Checking installed packages ..."
-	local INSTALLED=$($BIN_AWK -v PKG="$PACKAGES " 'BEGIN{FS=": ";ORS=""}/^Package\: /{Package=$2}/^Status\: / && /user installed/{if(index(PKG,Package" ")==0)print " "Package}' /usr/lib/opkg/status)
-	if [ "$INSTALLED" != "" ]; then
-		$BIN_ECHO "Installed packages not in configuration:$INSTALLED."
-		PACKAGES="$PACKAGES$INSTALLED"
-	else
-		$BIN_ECHO "All packages from configuration."
+	if [ "$INCLUDE_INSTALLED" != "" ]; then
+		$BIN_ECHO "Checking installed packages ..."
+		local INSTALLED=$($BIN_AWK -v PKG="$PACKAGES " 'BEGIN{FS=": ";ORS=" "}/^Package\: /{Package=$2}/^Status\: / && /user installed/{if(index(PKG,Package" ")==0)print Package}' /usr/lib/opkg/status)
+		INSTALLED=${INSTALLED%% }
+		if [ "$INSTALLED" != "" ]; then
+			$BIN_ECHO "Installed packages not in configuration: $INSTALLED."
+			PACKAGES="$PACKAGES $INSTALLED"
+		else
+			$BIN_ECHO "All packages from configuration."
+		fi
 	fi
 }
 
@@ -261,12 +265,13 @@ check_dependency() {
 		local PACKAGES_COUNT=0
 		while [ "$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)" != "$PACKAGES_COUNT" ]; do
 			PACKAGES_COUNT=$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)
-			DEPENDS=$DEPENDS$($BIN_OPKG depends -A $DEPENDS $PACKAGES | $BIN_AWK -v PKG="$DEPENDS $PACKAGES " '$2==""{ORS="";if(!seen[$1]++ && index(PKG,$1" ")==0)print " "$1}')
+			DEPENDS=$DEPENDS$($BIN_OPKG depends -A $DEPENDS $PACKAGES | $BIN_AWK -v PKG="$DEPENDS $PACKAGES " '$2==""{ORS=" ";if(!seen[$1]++ && index(PKG,$1" ")==0)print $1}')
+			check_exit_code
 		done
-		check_exit_code
+		DEPENDS=${DEPENDS%% }
 		$BIN_ECHO "Main packages: $PACKAGES."
 		if [ "$DEPENDS" != "" ]; then
-			$BIN_ECHO "Additional packages:$DEPENDS."
+			$BIN_ECHO "Additional packages: $DEPENDS."
 			PACKAGES="$DEPENDS $PACKAGES"
 		fi
 	fi
@@ -483,19 +488,13 @@ sysupgrade_execute() {
 initialize $@
 [ "$CMD" == "sysupgrade" ] && caution_alert
 update_repository
-[ "$INCLUDE_INSTALLED" != "" ] && check_installed
+check_installed
 check_dependency
-if [ "$CMD" == "install" ] || [ "$CMD" == "sysupgrade" ]; then
-	config_backup
-fi
+([ "$CMD" == "install" ] || [ "$CMD" == "sysupgrade" ]) && config_backup
 [ "$CMD" == "install" ] && packages_disable && packages_install
-if [ "$CMD" == "download" ] || ([ "$CMD" == "sysupgrade" ] && [ "$OFFLINE_POST_INSTALL" != "" ]); then
-	packages_download
-fi
+([ "$CMD" == "download" ] || ([ "$CMD" == "sysupgrade" ] && [ "$OFFLINE_POST_INSTALL" != "" ])) && packages_download
 [ "$CMD" == "install" ] && config_restore && packages_enable
-if [ "$CMD" == "download" ] || [ "$CMD" == "sysupgrade" ]; then
-	image_download
-fi
+([ "$CMD" == "download" ] || [ "$CMD" == "sysupgrade" ]) && image_download
 [ "$CMD" == "sysupgrade" ] && installer_prepare && packages_disable && sysupgrade_execute
 $BIN_ECHO "Done."
 # Done.
