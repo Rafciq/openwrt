@@ -20,6 +20,7 @@
 #	1.15	RD	Zmiana stderr
 #	1.16	RD	Dodanie wyœwietlania informacji o swap
 #	1.17	RD	Zmiana wyliczania informacji o flash
+#	1.18	RD	Zmiana wyœwietlania informacji o flash
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -160,7 +161,7 @@ print_loadavg() {
 }
 
 print_flash() {
-	local Flash=$(df -k /overlay | awk 'BEGIN{Total=0;Free=0}/\/overlay/{Total=$2;Free=$4}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' 2>/dev/null)
+	local Flash=$(df -k /overlay 2>/dev/null| awk 'BEGIN{Total=0;Free=0}/\/overlay/{Total=$2;Free=$4}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' 2>/dev/null)
 	local Total=$(echo "$Flash" | cut -f 1)
 	local Used=$(echo "$Flash" | cut -f 2)
 	local UsedPercent=$(echo "$Flash" | cut -f 3)
