@@ -6,7 +6,7 @@
 #
 # Destination /bin/wifi_down.sh
 #
-echo -n "Getting wireless infromation ..."
+echo -n "Getting wireless information ..."
 local Iface=""
 local RadiosUp=0
 local Connections=0
@@ -26,7 +26,7 @@ for Iface in $(uci -q show wireless | grep device=radio | cut -f2 -d.); do
 done
 echo -e "\nActive radio(s) $RadiosUp, Active connection(s) $Connections."
 if [ $RadiosUp -gt 0 ] && [ $Connections -eq 0 ]; then
-	echo "No wireless connection, shutting down the radio"
+	echo "No active wireless connection, shutting down the radio."
 	wifi down
 fi
 # Done.
