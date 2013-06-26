@@ -22,6 +22,7 @@
 #	1.17	RD	Zmiana wyliczania informacji o flash
 #	1.18	RD	Zmiana wyœwietlania informacji o flash
 #	1.19	RD	Zmiana wyœwietlania informacji o sprzêcie
+#	1.20	RD	Zmiana wyœwietlania informacji o sprzêcie
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -146,7 +147,7 @@ print_machine() {
 	if [ -e /tmp/sysinfo/model ]; then
 		Machine=$(cat /tmp/sysinfo/model 2>/dev/null)
 	elif [ -e /proc/cpuinfo ]; then
-		Machine=$(awk 'BEGIN{FS="[ \t]+:[ \t]"} /machine/ {print $2}' /proc/cpuinfo 2>/dev/null)
+		Machine=$(awk 'BEGIN{FS="[ \t]+:[ \t]";OFS=""}/machine/{Machine=$2}/Hardware/{Hardware=$2}END{print Machine,(Machine!="" && Hardware!="")?" ":"",Hardware}' /proc/cpuinfo 2>/dev/null)
 	fi
 	print_line 	"Machine: $MachineColor${Machine:-n/a}$NormalColor,"\
 				"Name: $MachineColor${HostName:-n/a}$NormalColor"
