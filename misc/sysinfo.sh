@@ -21,6 +21,7 @@
 #	1.16	RD	Dodanie wyœwietlania informacji o swap
 #	1.17	RD	Zmiana wyliczania informacji o flash
 #	1.18	RD	Zmiana wyœwietlania informacji o flash
+#	1.19	RD	Zmiana wyœwietlania informacji o sprzêcie
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -125,7 +126,7 @@ uptime_str() { # <Time in Seconds>
 			Days=$(printf "%dd " $Days)
 		else
 			Days=""
-		fi
+		fi 2>/dev/null
 		printf "$Days%02d:%02d:%02d" $Hours $Minutes $Seconds
 	fi
 }
@@ -142,7 +143,11 @@ print_horizontal_ruler() {
 print_machine() {
 	local Machine=""
 	local HostName=$(uci -q get system.@system[0].hostname)
-	[ -e /tmp/sysinfo/model ] && Machine=$(cat /tmp/sysinfo/model 2>/dev/null)
+	if [ -e /tmp/sysinfo/model ]; then
+		Machine=$(cat /tmp/sysinfo/model 2>/dev/null)
+	elif [ -e /proc/cpuinfo ]; then
+		Machine=$(awk 'BEGIN{FS="[ \t]+:[ \t]"} /machine/ {print $2}' /proc/cpuinfo 2>/dev/null)
+	fi
 	print_line 	"Machine: $MachineColor${Machine:-n/a}$NormalColor,"\
 				"Name: $MachineColor${HostName:-n/a}$NormalColor"
 }
@@ -160,16 +165,26 @@ print_loadavg() {
 	print_line "System load: $LoadAvg"
 }
 
-print_flash() {
-	local Flash=$(df -k /overlay 2>/dev/null| awk 'BEGIN{Total=0;Free=0}/\/overlay/{Total=$2;Free=$4}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' 2>/dev/null)
-	local Total=$(echo "$Flash" | cut -f 1)
-	local Used=$(echo "$Flash" | cut -f 2)
-	local UsedPercent=$(echo "$Flash" | cut -f 3)
-	local Free=$(echo "$Flash" | cut -f 4)
-	[ "$Total" -gt 0 ] && print_line 	"Flash:"\
+print_fs_summary() { # <Mount point> <Label>
+	local DeviceInfo=$(df -k $1 2>/dev/null| awk 'BEGIN{Total=0;Free=0} NR>1 && $6=="'$1'"{Total=$2;Free=$4}END{Used=Total-Free;printf"%.0f\t%.0f\t%.1f\t%.0f",Total*1024,Used*1024,(Total>0)?((Used/Total)*100):0,Free*1024}' 2>/dev/null)
+	local Total=$(echo "$DeviceInfo" | cut -f 1)
+	local Used=$(echo "$DeviceInfo" | cut -f 2)
+	local UsedPercent=$(echo "$DeviceInfo" | cut -f 3)
+	local Free=$(echo "$DeviceInfo" | cut -f 4)
+	[ "$Total" -gt 0 ] && print_line "$2:"\
 				"total: $ValueColor$(human_readable $Total)$NormalColor,"\
 				"used: $ValueColor$(human_readable $Used)$NormalColor, $ValueColor$UsedPercent$NormalColor%%,"\
 				"free: $ValueColor$(human_readable $Free)$NormalColor"
+}
+
+print_disk() {
+	local Overlay=$(awk '$3=="overlayfs"{print $2}' /proc/mounts 2>/dev/null)
+	if [ "$Overlay" != "" ]; then
+		print_fs_summary /overlay "Flash"		
+	fi
+	if [ "$Overlay" == "" ] || [ "$Overlay" != "/" ]; then
+		print_fs_summary / "RootFS"
+	fi
 }
 
 print_memory() {
@@ -401,7 +416,7 @@ initialize $@
 print_machine
 print_times
 print_loadavg
-print_flash
+print_disk
 print_memory
 print_swap
 print_wan
