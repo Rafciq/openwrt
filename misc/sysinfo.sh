@@ -23,12 +23,13 @@
 #	1.18	RD	Zmiana wyœwietlania informacji o flash
 #	1.19	RD	Zmiana wyœwietlania informacji o sprzêcie
 #	1.20	RD	Zmiana wyœwietlania informacji o sprzêcie
+#	1.21	RD	Dopasowyanie szerokoœci do zawartoœci /etc/banner
 #
 # Destination /sbin/sysinfo.sh
 #
 . /usr/share/libubox/jshn.sh
 
-local Width=60
+local Width=0
 local StartRuler="1"
 local EndRuler="1"
 local LastErrors="1"
@@ -43,6 +44,7 @@ local ExtraValue=""
 
 initialize() { # <Script Parameters>
 	local ColorMode="c"
+	[ -e /etc/banner ] && Width=$(awk 'BEGIN{max=0}{if(length($0)>max)max=length($0)}END{print max}' /etc/banner 2>/dev/null)
 	while [ -n "$1" ]; do
 		case "$1" in
 		-h|--help)	echo -e	"Usage: $0 [-h|--help] [[-m|--mono]|[-bw|-black-white]|[-c2|--color-2]] [-sr|--no-start-ruler] [-er|--no-end-ruler]"\
@@ -100,7 +102,7 @@ initialize() { # <Script Parameters>
 			ErrorColor="\e[4";;
 		*)	;;
 	esac
-	([ "$Width" == "" ] || [ "$Width" -lt 60 ]) && Width=60
+	([ "$Width" == "" ] || [ "$Width" -lt 65 ]) && Width=65
 }
 
 human_readable() { # <Number of bytes>
@@ -134,11 +136,11 @@ uptime_str() { # <Time in Seconds>
 
 print_line() { # <String to Print>, [[<String to Print>] ...]
 	local Line="$@"
-	printf " | %-${Width}s |\r | $Line\n" 2>/dev/null
+	printf " | %-$(expr $Width - 5)s |\r | $Line\n" 2>/dev/null
 }
 
 print_horizontal_ruler() {
-	printf "/%$(expr $Width + 4 )s\n" | tr ' /' '- ' 2>/dev/null
+	printf "/%$(expr $Width - 1)s\n" | tr ' /' '- ' 2>/dev/null
 }
 
 print_machine() {
