@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.28 Rafal Drzymala 2013
+# Script version 1.29 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -33,6 +33,7 @@
 #	1.26	RD	Preparation scripts code improvements (7)
 #	1.27	RD	Code tune up
 #	1.28	RD	Code tune up
+#	1.29	RD	Dependency check code improvements
 #
 # Destination /sbin/install.sh
 #
@@ -248,6 +249,7 @@ check_installed() {
 	if [ "$INCLUDE_INSTALLED" != "" ]; then
 		$BIN_ECHO "Checking installed packages ..."
 		local INSTALLED=$($BIN_AWK -v PKG="$PACKAGES " 'BEGIN{FS=": ";ORS=" "}/^Package\: /{Package=$2}/^Status\: / && /user installed/{if(index(PKG,Package" ")==0)print Package}' /usr/lib/opkg/status)
+		check_exit_code
 		INSTALLED=${INSTALLED%% }
 		if [ "$INSTALLED" != "" ]; then
 			$BIN_ECHO "Installed packages not in configuration: $INSTALLED."
@@ -261,19 +263,23 @@ check_installed() {
 check_dependency() {
 	if [ "$PACKAGES" != "" ]; then 
 		$BIN_ECHO "Checking packages dependency ..."
-		local DEPENDS
-		local PACKAGES_COUNT=0
-		while [ "$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)" != "$PACKAGES_COUNT" ]; do
-			PACKAGES_COUNT=$($BIN_ECHO $PACKAGES $DEPENDS | $BIN_WC -w)
-			DEPENDS=$DEPENDS$($BIN_OPKG depends -A $DEPENDS $PACKAGES | $BIN_AWK -v PKG="$DEPENDS $PACKAGES " '$2==""{ORS=" ";if(!seen[$1]++ && index(PKG,$1" ")==0)print $1}')
-			check_exit_code
-		done
-		DEPENDS=${DEPENDS%% }
 		$BIN_ECHO "Main packages: $PACKAGES."
-		if [ "$DEPENDS" != "" ]; then
-			$BIN_ECHO "Additional packages: $DEPENDS."
-			PACKAGES="$DEPENDS $PACKAGES"
-		fi
+		local PACKAGES_COUNT=-1
+		while [ "$($BIN_ECHO $PACKAGES | $BIN_WC -w)" != "$PACKAGES_COUNT" ]; do
+			PACKAGES_COUNT=$($BIN_ECHO $PACKAGES | $BIN_WC -w)
+			local DEPENDS
+			local DEPENDS_COUNT=-1
+			while [ "$($BIN_ECHO $DEPENDS | $BIN_WC -w)" != "$DEPENDS_COUNT" ]; do
+				DEPENDS_COUNT=$($BIN_ECHO $DEPENDS | $BIN_WC -w)
+				DEPENDS=$DEPENDS$($BIN_OPKG depends -A $DEPENDS $PACKAGES | $BIN_AWK -v PKG="$DEPENDS $PACKAGES " 'BEGIN{ORS=" "}{if($2=="" && !seen[$1]++ && index(PKG,$1" ")==0)print $1}')
+				check_exit_code
+			done
+			DEPENDS=${DEPENDS%% }
+			[ "$DEPENDS" != "" ] && PACKAGES="$DEPENDS $PACKAGES"
+			PACKAGES=$($BIN_OPKG whatprovides -A $PACKAGES | $BIN_AWK -v PKG="$PACKAGES " 'function Select(){if(CNT<1)return;SEL=0;for(ITEM in LIST)if(index(PKG,LIST[ITEM]" ")!=0)SEL=ITEM;if(!seen[LIST[SEL]]++)print LIST[SEL];delete LIST;CNT=0}BEGIN{ORS=" "}{if($3!="")Select();else LIST[CNT++]=$1}END{Select()}')
+			PACKAGES=${PACKAGES%% }
+		done
+		$BIN_ECHO "All packages: $PACKAGES."
 	fi
 }
 
