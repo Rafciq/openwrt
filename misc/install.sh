@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.29 Rafal Drzymala 2013
+# Script version 1.30 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -34,6 +34,8 @@
 #	1.27	RD	Code tune up
 #	1.28	RD	Code tune up
 #	1.29	RD	Dependency check code improvements
+#	1.30	RD	Added post install file removing
+#				Added external script
 #
 # Destination /sbin/install.sh
 #
@@ -55,6 +57,8 @@ local POST_INSTALLER="/bin/$POST_INSTALL_SCRIPT.sh"
 local POST_INSTALLER_LOG="/usr/$POST_INSTALL_SCRIPT.log"
 local INSTALLER_KEEP_FILE="/lib/upgrade/keep.d/$POST_INSTALL_SCRIPT"
 local RC_LOCAL="/etc/rc.local"
+local POST_INSTALL_REMOVE="/etc/config/*-opkg"
+local RUN_SCRIPT=""
 
 check_exit_code() {
 	local CODE=$?
@@ -89,6 +93,15 @@ add_to_keep_file() { # <Content to save> <Root path>
 	local ROOT_PATH="$2"
 	$BIN_ECHO "$1">>$ROOT_PATH$INSTALLER_KEEP_FILE
 	check_exit_code
+}
+
+run_script() { # <Event>
+	if [ "$RUN_SCRIPT" != "" ] && [ -x $RUN_SCRIPT ]; then
+		$BIN_ECHO "Run script $RUN_SCRIPT $1 ..."
+		$RUN_SCRIPT $1
+		check_exit_code
+		$BIN_ECHO "Script $RUN_SCRIPT exited."
+	fi
 }
 
 add_to_post_installer_log() { # <Content to save>
@@ -165,6 +178,7 @@ print_help() {
 			"\n\tImage source URL : '$($BIN_UCI -q get system.@sysupgrade[0].imagesource)'"\
 			"\n\tImage source prefix : '$($BIN_UCI -q get system.@sysupgrade[0].imageprefix)'"\
 			"\n\tImage source suffix : '$($BIN_UCI -q get system.@sysupgrade[0].imagesuffix)'"\
+			"\n\tRun external script : '$($BIN_UCI -q get system.@sysupgrade[0].runscript)'"\
 			"\n\tPackages: '$($BIN_UCI -q get system.@sysupgrade[0].opkg)'"\
 			"\n\nExamples configuration in /etc/config/system"\
 			"\n\tconfig sysupgrade"\
@@ -227,6 +241,7 @@ initialize() { # <Script parametrs>
 	IMAGE_SOURCE=$($BIN_UCI -q get system.@sysupgrade[0].imagesource)
 	IMAGE_PREFIX=$($BIN_UCI -q get system.@sysupgrade[0].imageprefix)
 	IMAGE_SUFFIX=$($BIN_UCI -q get system.@sysupgrade[0].imagesuffix)
+	RUN_SCRIPT=$($BIN_UCI -q get system.@sysupgrade[0].runscript)
 	PACKAGES=$($BIN_UCI -q get system.@sysupgrade[0].opkg)
 	if [ "$CMD" == "sysupgrade" ] && [ "$OFFLINE_POST_INSTALL" != "" ]; then
 		local MOUNT_DEVICE=$(get_mount_device $INSTALL_PATH)
@@ -239,6 +254,7 @@ initialize() { # <Script parametrs>
 }
 
 update_repository() {
+	run_script before_opkg_update
 	$BIN_ECHO "Updating packages repository ..."
 	$BIN_OPKG update
 	check_exit_code
@@ -346,10 +362,14 @@ packages_enable() {
 
 packages_install() {
 	if [ "$PACKAGES" != "" ]; then 
+		run_script before_opkg_install
 		$BIN_ECHO "Installing packages ..."
 		$BIN_OPKG $CMD $PACKAGES
 		check_exit_code
+		$BIN_RM $POST_INSTALL_REMOVE
+		check_exit_code
 		$BIN_ECHO "Packages are installed."
+		run_script after_opkg_install
 	fi
 }
 
@@ -388,14 +408,14 @@ image_download() {
 	local IMAGE_LOCAL_NAME="$INSTALL_PATH/$IMAGE_FILENAME"
 	local SUMS_REMOTE_NAME="$IMAGE_SOURCE/md5sums"
 	local SUMS_LOCAL_NAME="$INSTALL_PATH/md5sums"
-		[ -f $IMAGE_LOCAL_NAME ] && $BIN_RM -f $IMAGE_LOCAL_NAME
+	[ -f $IMAGE_LOCAL_NAME ] && $BIN_RM -f $IMAGE_LOCAL_NAME
 	$BIN_ECHO "Downloading system image as $IMAGE_LOCAL_NAME from $IMAGE_REMOTE_NAME ..."	
 	$BIN_WGET -O $IMAGE_LOCAL_NAME $IMAGE_REMOTE_NAME
 	check_exit_code
 	$BIN_ECHO "Downloading images sums as $SUMS_LOCAL_NAME from $SUMS_REMOTE_NAME ..."	
 	$BIN_WGET -O $SUMS_LOCAL_NAME $SUMS_REMOTE_NAME
-	$BIN_ECHO "Checking system image control sum ..."	
 	check_exit_code
+	$BIN_ECHO "Checking system image control sum ..."	
 	local SUM_ORG=$($BIN_GREP $($BIN_BASENAME $IMAGE_REMOTE_NAME) $SUMS_LOCAL_NAME | $BIN_CUT -d " " -f 1)
 	check_exit_code
 	local SUM_FILE=$($BIN_MD5SUM $IMAGE_LOCAL_NAME | $BIN_CUT -d " " -f 1)
@@ -412,6 +432,7 @@ image_download() {
 	else
 		$BIN_ECHO "System image is downloaded and checksum is correct."
 	fi
+	run_script after_image_downloaded
 }
 
 installer_prepare() {
@@ -437,12 +458,20 @@ installer_prepare() {
 		check_exit_code
 	else
 		$BIN_ECHO -e "\tuntil $BIN_PING -q -W 30 -c 1 8.8.8.8 &>/dev/null; do"\
-				"\n\t\t$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Wait for internet connection\""\
+				"\t\t$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Wait for internet connection\""\
 				"\n\tdone">>$POST_INSTALLER
 		check_exit_code
 	fi
-	$BIN_ECHO -e "\t$BIN_OPKG update | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT"\
-			"\n\tlocal PACKAGES=\"$PACKAGES\""\
+	if [ "$RUN_SCRIPT" != "" ] && [ -x $RUN_SCRIPT ]; then
+		$BIN_ECHO -e "\t$RUN_SCRIPT before_opkg_update | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT">>$POST_INSTALLER
+		check_exit_code
+	fi
+	$BIN_ECHO -e "\t$BIN_OPKG update | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT">>$POST_INSTALLER
+	if [ "$RUN_SCRIPT" != "" ] && [ -x $RUN_SCRIPT ]; then
+		$BIN_ECHO -e "\t$RUN_SCRIPT before_opkg_install | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT">>$POST_INSTALLER
+		check_exit_code
+	fi
+	$BIN_ECHO -e "\tlocal PACKAGES=\"$PACKAGES\""\
 			"\n\tlocal PACKAGE"\
 			"\n\tlocal SCRIPT"\
 			"\n\tfor PACKAGE in \$PACKAGES; do"\
@@ -455,12 +484,17 @@ installer_prepare() {
 			"\n\t\tdone"\
 			"\n\tdone">>$POST_INSTALLER
 	check_exit_code
+	if [ "$RUN_SCRIPT" != "" ] && [ -x $RUN_SCRIPT ]; then
+		$BIN_ECHO -e "\t$RUN_SCRIPT after_opkg_install | $BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT">>$POST_INSTALLER
+		check_exit_code
+	fi
 	if [ "$BACKUP_ENABLE" != "" ]; then
 		$BIN_ECHO -e "\t$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Restoring configuration backup from $BACKUP_FILE\""\
 				"\n\t$BIN_SYSUPGRADE --restore-backup $BACKUP_FILE">>$POST_INSTALLER
 		check_exit_code
 	fi
 	$BIN_ECHO -e "\t$BIN_LOGGER -p user.notice -t $POST_INSTALL_SCRIPT \"Stop installation of packages, cleaning and force reboot\""\
+			"\n\t$BIN_RM $POST_INSTALL_REMOVE"\
 			"\n\t$BIN_RM -f $INSTALLER_KEEP_FILE"\
 			"\n\t$BIN_AWK -v installer=\"$POST_INSTALLER\" '\$0!~installer' $RC_LOCAL>$RC_LOCAL.tmp"\
 			"\n\t$BIN_MV -f $RC_LOCAL.tmp $RC_LOCAL"\
@@ -474,6 +508,7 @@ installer_prepare() {
 	$BIN_CHMOD 777 $POST_INSTALLER
 	check_exit_code
 	add_to_keep_file $POST_INSTALLER
+	[ "$RUN_SCRIPT" != "" ] && [ -x $RUN_SCRIPT ] && add_to_keep_file $RUN_SCRIPT
 	$BIN_ECHO "Setting autorun packages installer on next boot in $RC_LOCAL ..."
 	add_to_keep_file $RC_LOCAL
 	$BIN_ECHO -e "[ -x $POST_INSTALLER ] && $POST_INSTALLER\n$($BIN_CAT $RC_LOCAL)">$RC_LOCAL
