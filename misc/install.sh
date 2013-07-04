@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.30 Rafal Drzymala 2013
+# Script version 1.31 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -36,6 +36,7 @@
 #	1.29	RD	Dependency check code improvements
 #	1.30	RD	Added post install file removing
 #				Added external script
+#	1.31	RD	Added backup command
 #
 # Destination /sbin/install.sh
 #
@@ -148,7 +149,7 @@ print_help() {
 	$BIN_ECHO -e "Usage:"\
 			"\n\t$0 [install|download|sysupgrade] [-h|--help] [-o|--online] [-b|--backup-off] [-i|--exclude-installed]"\
 			"\n\nCommands:"\
-			"\n\t\tdownload\tdownload all packages and system image do install directory."\
+			"\n\t\tdownload\tdownload all packages and system image do install directory,"\
 			"\n\t\tinstall\t\tbackup configuration,"\
 			"\n\t\t\t\tstop and disable packages,"\
 			"\n\t\t\t\tinstall packages,"\
@@ -164,6 +165,7 @@ print_help() {
 			"\n\t\t\t\trestore configuration,"\
 			"\n\t\t\t\tcleanup installation,"\
 			"\n\t\t\t\t... reboot system ..."\
+			"\n\t\tbackup\t\tbackup configuration"\
 			"\n\nOptions:"\
 			"\n\t\t-h\t\tThis help,"\
 			"\n\t\t-b\t\tDisable configuration backup and restore during installation or system upgrade process."\
@@ -198,7 +200,7 @@ initialize() { # <Script parametrs>
 	which_binary echo basename logger chmod uci date ls cat cut tr wc rm mv sync reboot awk grep wget opkg sysupgrade md5sum ping logread gzip
 	while [ -n "$1" ]; do
 		case "$1" in
-			install|download|sysupgrade) CMD="$1";; 
+			install|download|sysupgrade|backup) CMD="$1";; 
 			-h|--help) print_help;;
 			-b|--backup-off) BACKUP_ENABLE="";;
 			-o|--online) OFFLINE_POST_INSTALL="";;
@@ -209,6 +211,7 @@ initialize() { # <Script parametrs>
 		shift
 	done
 	[ "$CMD" == "" ] && CMD=install
+	[ "$CMD" == "backup" ] && BACKUP_ENABLE="1"
 	HOST_NAME=$($BIN_UCI -q get system.@system[0].hostname)
 	if [ "$HOST_NAME" == "" ]; then 
 		$BIN_ECHO "Error while getting host name!"
@@ -238,9 +241,11 @@ initialize() { # <Script parametrs>
 			exit 1
 		fi
 	fi
-	IMAGE_SOURCE=$($BIN_UCI -q get system.@sysupgrade[0].imagesource)
-	IMAGE_PREFIX=$($BIN_UCI -q get system.@sysupgrade[0].imageprefix)
-	IMAGE_SUFFIX=$($BIN_UCI -q get system.@sysupgrade[0].imagesuffix)
+	if [ "$CMD" == "download" ] || [ "$CMD" == "sysupgrade" ]; then
+		IMAGE_SOURCE=$($BIN_UCI -q get system.@sysupgrade[0].imagesource)
+		IMAGE_PREFIX=$($BIN_UCI -q get system.@sysupgrade[0].imageprefix)
+		IMAGE_SUFFIX=$($BIN_UCI -q get system.@sysupgrade[0].imagesuffix)
+	fi
 	RUN_SCRIPT=$($BIN_UCI -q get system.@sysupgrade[0].runscript)
 	PACKAGES=$($BIN_UCI -q get system.@sysupgrade[0].opkg)
 	if [ "$CMD" == "sysupgrade" ] && [ "$OFFLINE_POST_INSTALL" != "" ]; then
@@ -527,6 +532,7 @@ sysupgrade_execute() {
 
 # Main routine
 initialize $@
+[ "$CMD" == "backup" ] && config_backup && exit
 [ "$CMD" == "sysupgrade" ] && caution_alert
 update_repository
 check_installed
