@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.31 Rafal Drzymala 2013
+# Script version 1.32 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -37,6 +37,7 @@
 #	1.30	RD	Added post install file removing
 #				Added external script
 #	1.31	RD	Added backup command
+#	1.32	RD	Removed I/O control after post install file removing
 #
 # Destination /sbin/install.sh
 #
@@ -372,7 +373,6 @@ packages_install() {
 		$BIN_OPKG $CMD $PACKAGES
 		check_exit_code
 		$BIN_RM $POST_INSTALL_REMOVE
-		check_exit_code
 		$BIN_ECHO "Packages are installed."
 		run_script after_opkg_install
 	fi
