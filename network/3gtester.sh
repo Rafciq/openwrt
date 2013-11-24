@@ -1,6 +1,6 @@
 #!/bin/sh
 # Establishing 3G modem connection in dialup or NDIS mode
-# Script version 1.10 Rafal Drzymala 2012,2013
+# Script version 1.11 Rafal Drzymala 2012,2013
 #
 # Changelog
 #	1.00	RD	First stable code
@@ -14,6 +14,7 @@
 #	1.08	RD	Improve reboot rutine
 #	1.09	RD	Small improvements
 #	1.10	RD	Changed FPATH to FILEPATH and TMPPATH
+#	1.11	RD	Small improvements
 #
 # Destination /bin/3gtester.sh
 #
@@ -23,7 +24,7 @@ COMGT_APP="gcom"
 NDISUP="/etc/gcom/ndisup.gcom"
 FILEPATH="/usr/data"
 TMPPATH="/tmp"
-if ! which "$COMGT_APP" >/dev/null; then
+if ! which "$COMGT_APP" &>/dev/null; then
 	logger -p user.error -t $SCR "Application $COMGT_APP does not exist"
 	exit
 fi
@@ -69,11 +70,11 @@ for WAN in $WANS; do
 				else
 					COMGT_DEV="-d $DEV_COMM"
 					COMGT_SCR="-s $NDISUP"
-					if pgrep -l -f "$COMGT_APP $COMGT_DEV $COMGT_SCR"> /dev/null; then
+					if pgrep -l -f "$COMGT_APP $COMGT_DEV $COMGT_SCR" >/dev/null; then
 						logger -p user.notice -t $SCR "Connection $WAN ($DEV_IFNAME) is already restarted"
-					elif pgrep -l -f "$COMGT_APP $COMGT_DEV"> /dev/null; then
+					elif pgrep -l -f "$COMGT_APP $COMGT_DEV" >/dev/null; then
 						logger -p user.notice -t $SCR "Device $DEV_COMM used by another instance of $COMGT_APP"
-					elif ([ "$DEV_COMM" == "/dev/ttyUSB2" ] || [ "$DEV_COMM" == "/dev/noz2" ] || [ "$DEV_COMM" == "/dev/modem" ]) && pgrep -l -f  "$COMGT_APP" | grep -q -v "\-d"> /dev/null; then
+					elif ([ "$DEV_COMM" == "/dev/ttyUSB2" ] || [ "$DEV_COMM" == "/dev/noz2" ] || [ "$DEV_COMM" == "/dev/modem" ]) && pgrep -l -f  "$COMGT_APP" | grep -q -v "\-d" >/dev/null; then
 						logger -p user.notice -t $SCR "Device $DEV_COMM used by another instance of $COMGT_APP"
 					else
 						(ifdown $WAN; PINCODE=$DEV_PINCODE APN=$DEV_APN MODE=$DEV_MODE $COMGT_APP $COMGT_DEV $COMGT_SCR | logger -p user.notice -t $COMGT_APP; sleep 2; ifup $WAN) &
@@ -81,8 +82,8 @@ for WAN in $WANS; do
 				fi
 			fi
 			if [ "$DEV_REBOOTAFTER" != "" ] && [ "$UPTIME" -ge "$DEV_REBOOTAFTER" ]; then
-				LAST_ICMP_CHK=$(cut -d " " -f2 $TMPPATH/$SCR.$WAN.check)
-				LAST_ICMP_OK=$(cut -d " " -f2 $TMPPATH/$SCR.$WAN.ok)
+				LAST_ICMP_CHK=$(cut -d " " -f2 $TMPPATH/$SCR.$WAN.check &>/dev/null)
+				LAST_ICMP_OK=$(cut -d " " -f2 $TMPPATH/$SCR.$WAN.ok &>/dev/null)
 				if [ "$LAST_ICMP_CHK" != "" ] && [ "$LAST_ICMP_OK" != "" ] && [ "$LAST_ICMP_CHK" -ge "$LAST_ICMP_OK" ]; then
 					SINCE_ICMP_OK=$(($LAST_ICMP_CHK-$LAST_ICMP_OK))
 					[ "$SINCE_ICMP_OK" -gt "0" ] && logger -p user.notice -t $SCR "Lapsing $SINCE_ICMP_OK second(s) since the last sent the correct ICMP"
