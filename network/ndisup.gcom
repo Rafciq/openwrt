@@ -1,7 +1,7 @@
 opengt
 	let $x="ndisup:"+$basename($dev())+" "
 	print $x+"Establishing 3G modem connection in NDIS mode\n"
-	print $x+"Script for comgt version 1.07 Rafal Drzymala 2012\n"
+	print $x+"Script for comgt version 1.08 Rafal Drzymala 2012,2013\n"
 #
 # Changelog
 #	1.00	RD	First stable code
@@ -17,6 +17,7 @@ opengt
 #			Changed waiting for establish connection rutine
 #			Changed waiting for restart modem
 #	1.07	RD	Improvements restart modem
+#	1.08	RD	Move set mode rutine, added pre and post command
 #			
 # Destination /etc/gcom/ndisup.gcom
 #
@@ -35,7 +36,9 @@ opengt
 	let $a=$env("APN")
 	if $a = "" let $a=$env("COMGTAPN")
 	if $a = "" print $x+"APN or COMGTAPN environment var not specified\n" goto finish	
-	let $m=$env("MODE")
+	let $m0=$env("MODE")
+	let $m1=$env("PRECMD")
+	let $m2=$env("POSTCMD")
 	let $p=$env("PINCODE")
 	if $p = "" let $p=$env("COMGTPIN")
 	let r1=1
@@ -131,6 +134,10 @@ opengt
 	goto abort
 :end_pin_unlock
 
+# Setting mode
+	let $c=$m0
+	gosub do_send_cmd
+
 # Getting device information
 	print $x+"Getting device information\n"
 
@@ -169,9 +176,6 @@ opengt
 	print $x+"- modem: "+$toupper($i1)+" "+$toupper($i2)+"\n"
 	print $x+"- firmware: "+$i3+"\n"
 	print $x+"- IMEI: "+$i4+"\n"
-# 
-#	system "export IMEI_"+$basename($dev())+"=\""+$i4+"\""
-
 
 # Getting received signal strength
 	print $x+"Getting received signal strength\n"
@@ -194,7 +198,7 @@ opengt
 	print $x+"- signal strength: (",s1,"), ",s2," dBm, ",s3,"%\n"
 	let s3=s3/2
 	let $s3=$left("##################################################",s3)
-	let $s3=$s3+$right("----1----2----3----5----5----6----7----8----9----$",50-s3)
+	let $s3=$s3+$right("----1----2----3----4----5----6----7----8----9----$",50-s3)
 	print $x+"- level: ["+$s3+"]\n"
 :end_sigstr
 
@@ -478,17 +482,9 @@ opengt
 	print $x+"Disconnected successfully\n"
 :end_disconnect	
 
-# Setting mode
-	if $m = "" goto end_mode_set
-	print $x+"Setting mode "+$m+"\n"
-	send $m+"^m"
-	waitfor 5 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
-	if % = -1 goto comm_timeout
-	if % = 1 print $x+"Error while setting mode error\n" goto abort
-	if % = 2 gosub cme_error print $x+"Error "+$e+" while setting mode error\n" goto abort
-	if % = 3 print $x+"Command not supported\n" goto abort
-	print $x+"Mode set successfully\n"
-:end_mode_set
+# Sending pre command
+	let $c=$m1
+	gosub do_send_cmd
 
 # Establishing connection
 	print $x+"Try to establish connection via APN "+$a+"\n"
@@ -519,6 +515,11 @@ opengt
 	
 # In case of normal exit
 :finish
+
+# Sending post command
+	let $c=$m2
+	gosub do_send_cmd
+
 	print $x+"Done.\n"
 	exit 0
 
@@ -534,6 +535,20 @@ opengt
 	get 1 "^j" $t
 	return
 
+# Send command routine
+:do_send_cmd
+	if $c = "" goto end_send_cmd
+	print $x+"Sending command "+$c+"\n"
+	send $c+"^m"
+	waitfor 5 "OK^m^j","ERROR^m^j","+CME ERROR: ","COMMAND NOT SUPPORT^m^j"
+	if % = -1 goto comm_timeout
+	if % = 1 print $x+"Error while sending command error\n" goto abort
+	if % = 2 gosub cme_error print $x+"Error "+$e+" while sending command error\n" goto abort
+	if % = 3 print $x+"Command not supported\n" goto abort
+	print $x+"Command sent successfully\n"
+:end_send_cmd
+	return
+	
 # Restarting modem and start all
 :restart_modem
 	let r1 = r1+1
