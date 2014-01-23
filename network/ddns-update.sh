@@ -1,9 +1,10 @@
 #!/bin/sh
 # DDNS update for DYNDNS.org
-# Script version 1.00 Rafal Drzymala 2013
+# Script version 1.01 Rafal Drzymala 2013
 #
 # Changelog
 #	1.00	RD	First stable code
+#	1.01	RD	Added detectip parameter
 #
 # Destination /etc/hotplug.d/iface/90-ddns-update
 #
@@ -18,19 +19,27 @@ do_ddns() {
 	local username
 	local password
 	local domain
+	local detectip
 	local wan_ip
 	config_get_bool enabled $1 enabled 1
 	if [ $enabled == 1 ] && [ "$1" == "$wan_if" ]; then
 		config_get username $1 username
 		config_get password $1 password
 		config_get domain $1 domain
-		network_get_ipaddr wan_ip $wan_if
-		if [ "$wan_ip" == "" ]; then
-			logger -p user.notice -t ddns-update "Unable to get interface $wan_if IP address."
-			return
+		config_get_bool detectip $1 detectip 0
+		if [ $detectip == 1 ]; then
+			wan_ip="detect IP"
+			myip=""
+		else
+			network_get_ipaddr wan_ip $wan_if
+			if [ "$wan_ip" == "" ]; then
+				logger -p user.notice -t ddns-update "Unable to get interface $wan_if IP address."
+				return
+			fi
+			myip="&myip=$wan_ip"
 		fi
 		logger -p user.notice -t ddns-update "Register in DDNS because interface $wan_if ($wan_ip) is up."
-		local result=$(wget -q -O - "http://$username:$password@members.dyndns.org/nic/update?hostname=$domain&myip=$wan_ip")
+		local result=$(wget -q -O - "http://$username:$password@members.dyndns.org/nic/update?hostname=$domain$myip")
 		case $result in
 			badauth)
 				logger -p user.notice -t ddns-update "The username and password pair do not match a real user.";;
