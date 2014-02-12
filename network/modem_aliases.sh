@@ -13,9 +13,9 @@
 do_modem_cmd() {
     local Device=$1
     local Cmd=$2
-    printf "+++" >$Device 2>/dev/null
-    sleep 1
-    printf "\nATQ0V1E1\nAT$Cmd\n" >$Device 2>/dev/null
+#    printf "+++" >$Device 2>/dev/null
+#    sleep 1
+    printf "\n\nATQ0V1E1\nAT$Cmd\n" >$Device 2>/dev/null
     awk '
     BEGIN {
         FS="\n";
