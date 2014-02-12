@@ -1,5 +1,5 @@
 #!/bin/sh
-# DDNS update for DYNDNS.org
+# DDNS update for DYNDNS.org and NO-IP.com
 # Script version 1.02 Rafal Drzymala 2013,2014
 #
 # Changelog
