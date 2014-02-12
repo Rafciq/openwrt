@@ -1,11 +1,12 @@
 #!/bin/sh
 # Create alias for modem interface, based on its IMEI and sim ICCID
-# Script version 1.02 Rafal Drzymala 2013
+# Script version 1.03 Rafal Drzymala 2013
 #
 # Changelog
-#    1.00    RD    First stable code
-#    1.01    RD    Added additional USB device filter (suggested by Obsy)
-#    1.02    RD    Added ICCID decode to readable format
+#	1.00	RD	First stable code
+#	1.01	RD	Added additional USB device filter (suggested by Obsy)
+#	1.02	RD	Added ICCID decode to readable format
+#	1.03	RD	Changed communication with modem
 #
 # Destination /etc/hotplug.d/usb/90-modem_aliases
 #
@@ -13,16 +14,18 @@
 do_modem_cmd() {
     local Device=$1
     local Cmd=$2
-#    printf "+++" >$Device 2>/dev/null
-#    sleep 1
-    printf "\n\nATQ0V1E1\nAT$Cmd\n" >$Device 2>/dev/null
+    printf "\nATQ0V1E1\nAT$Cmd\n" >$Device 2>/dev/null
+	sleep 1
     awk '
     BEGIN {
-        FS="\n";
+		FS="\n";
         RS="\n";
         Step=1;
-        Response=""}
-    {    if ($1=="COMMAND NOT SUPPORT" || $1=="ERROR" || substr($1,1,11)=="+CME ERROR:")
+        Response="";}
+    {	if ($1!="") print $1 >>"/tmp/modem_aliases";
+		if ($1=="" || substr($1,1,11)=="^")
+			{}
+		else if ($1=="COMMAND NOT SUPPORT" || $1=="ERROR" || substr($1,1,11)=="+CME ERROR:")
             exit 1
         else if (Step==1 && $1=="OK")
             Step=2
@@ -37,14 +40,20 @@ do_modem_cmd() {
 }
 
 get_modem_IMEI() {
-    do_modem_cmd $1 "+CGSN"
+    local IMEI=$(do_modem_cmd $1 "+CGSN")
+	case "$IMEI" in
+	[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) echo "$IMEI";;
+	esac
 }
 
 get_sim_ICCID() {
     local ICCID=$(do_modem_cmd $1 "+CRSM=176,12258,0,0,10" | cut -d "," -f 3 | tr -d "\"")
-    [ "$ICCID" != "" ] && echo "${ICCID:1:1}${ICCID:0:1}${ICCID:3:1}${ICCID:2:1}${ICCID:5:1}"\
+	local ICCID=$(echo "${ICCID:1:1}${ICCID:0:1}${ICCID:3:1}${ICCID:2:1}${ICCID:5:1}"\
 "${ICCID:4:1}${ICCID:7:1}${ICCID:6:1}${ICCID:9:1}${ICCID:8:1}${ICCID:11:1}${ICCID:10:1}"\
-"${ICCID:13:1}${ICCID:12:1}${ICCID:15:1}${ICCID:14:1}${ICCID:17:1}${ICCID:16:1}${ICCID:19:1}"
+"${ICCID:13:1}${ICCID:12:1}${ICCID:15:1}${ICCID:14:1}${ICCID:17:1}${ICCID:16:1}${ICCID:19:1}")
+	case "$ICCID" in
+	[0-9][0-9][0-9][0-9]*) echo "$ICCID";;
+	esac
 }
 
 create_device_alias() {
