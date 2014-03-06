@@ -4,26 +4,27 @@
 # 
 #	1.00	CJ	Pierwsza wersja kodu
 #	1.01	RD	Drobna przebudowa
-#	1.02	RD	Korekta b³êdu wyœw. zajetoœci Flash-a, dodanie kolorów
+#	1.02	RD	Korekta b³êdu wy¶w. zajeto¶ci Flash-a, dodanie kolorów
 #	1.03	RD	Dodanie nazwy routera, zmiana formatowania
 #	1.04	RD	Kosmetyka, sugestie @mikhnal. Zmiana przetwarzania info. o wan.
 #	1.05	RD	Zmiana algorytmu pobierania danych dla wan i lan
-#	1.06	RD	Parametryzacja kolorów i pojawiania siê podkreœleñ
-#	1.07	RD	Modyfikacja zwi¹zana z poprawnym wyœwietlaniem interfejsu dla prot.3g
-#	1.08	RD	Modyfikacja wyœwietlania DNS-ów dla wan, dodanie uptime dla interfejsów
-#	1.09	RD	Dodanie statusu "Down" dla wy³¹czonego wifi, zmiana wyœwietlania dla WLAN(sta)
-#	1.10	RD	Korekta wyœwietlania dla WLAN(sta)
-#	1.11	RD	Korekta wyœwietlania stanu pamiêci, sugestie @dopsz 
-#	1.12	RD	Zmiana kolejnoœci wyœwietlania wartoœci stanu pamiêci + kosmetyka 
-#	1.13	RD	Dodanie info o dhcp w LAN, zmiana sposobu wyœwietlania informacji o LAN
+#	1.06	RD	Parametryzacja kolorów i pojawiania siê podkre¶leñ
+#	1.07	RD	Modyfikacja zwi±zana z poprawnym wy¶wietlaniem interfejsu dla prot.3g
+#	1.08	RD	Modyfikacja wy¶wietlania DNS-ów dla wan, dodanie uptime dla interfejsów
+#	1.09	RD	Dodanie statusu "Down" dla wy³±czonego wifi, zmiana wy¶wietlania dla WLAN(sta)
+#	1.10	RD	Korekta wy¶wietlania dla WLAN(sta)
+#	1.11	RD	Korekta wy¶wietlania stanu pamiêci, sugestie @dopsz 
+#	1.12	RD	Zmiana kolejno¶ci wy¶wietlania warto¶ci stanu pamiêci + kosmetyka 
+#	1.13	RD	Dodanie info o dhcp w LAN, zmiana sposobu wy¶wietlania informacji o LAN
 #	1.14	RD	Dodanie informacji o ostatnich 5 b³êdach
 #	1.15	RD	Zmiana stderr
-#	1.16	RD	Dodanie wyœwietlania informacji o swap
+#	1.16	RD	Dodanie wy¶wietlania informacji o swap
 #	1.17	RD	Zmiana wyliczania informacji o flash
-#	1.18	RD	Zmiana wyœwietlania informacji o flash
-#	1.19	RD	Zmiana wyœwietlania informacji o sprzêcie
-#	1.20	RD	Zmiana wyœwietlania informacji o sprzêcie
-#	1.21	RD	Dopasowyanie szerokoœci do zawartoœci /etc/banner
+#	1.18	RD	Zmiana wy¶wietlania informacji o flash
+#	1.19	RD	Zmiana wy¶wietlania informacji o sprzêcie
+#	1.20	RD	Zmiana wy¶wietlania informacji o sprzêcie
+#	1.21	RD	Dopasowyanie szeroko¶ci do zawarto¶ci /etc/banner
+#	1.22	RD	Dodanie wyœwietlania w HTML-u
 #
 # Destination /sbin/sysinfo.sh
 #
@@ -41,9 +42,16 @@ local RXTXColor=""
 local ErrorColor=""
 local ExtraName=""
 local ExtraValue=""
+local HTML=""
 
 initialize() { # <Script Parameters>
 	local ColorMode="c"
+	if [ ! -z "$REQUEST_METHOD" ]; then
+		HTML="1"
+		ColorMode="html"
+		StartRuler=""
+		EndRuler="1"
+	fi
 	[ -e /etc/banner ] && Width=$(awk 'BEGIN{max=0}{if(length($0)>max)max=length($0)}END{print max}' /etc/banner 2>/dev/null)
 	while [ -n "$1" ]; do
 		case "$1" in
@@ -100,9 +108,47 @@ initialize() { # <Script Parameters>
 			AddrColor="\e[4m"
 			RXTXColor="\e[1m"
 			ErrorColor="\e[4";;
+		html)	NormalColor="</font><font class=\"Normal\">"
+			MachineColor="</font><font class=\"Machine\">"
+			ValueColor="</font><font class=\"Value\">"
+			AddrColor="</font><font class=\"Addr\">"
+			RXTXColor="</font><font class=\"RXTX\">"
+			ErrorColor="</font><font class=\"Error\">";;
 		*)	;;
 	esac
 	([ "$Width" == "" ] || [ "$Width" -lt 65 ]) && Width=65
+	if [ "$HTML" == "1" ]; then
+		echo "Content-type: text/html"
+		echo ""
+		cat << EOF
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	</head>
+	<style>
+		body {font-family:Consolas,Terminal,"Lucida Console",Courier,Monaco,monospace;
+			font-size:1em;white-space:pre-wrap;word-wrap:break-word;line-height:1.2em;
+			color:#bbbbbb;background-color:#000000}
+		.Normal {color:#bbbbbb}
+		.Machine  {color:#bbbb00}
+		.Value {color:#00ffff}
+		.Addr {color:#ee5555}
+		.RXTX {color:#00bb00}
+	</style>
+	<body>
+EOF
+		[ -e /etc/banner ] && cat /etc/banner
+	fi
+}
+
+finalize() {
+	if [ "$HTML" == "1" ]; then
+		cat << EOF
+	</body>
+</html>
+EOF
+	fi
 }
 
 human_readable() { # <Number of bytes>
@@ -136,7 +182,11 @@ uptime_str() { # <Time in Seconds>
 
 print_line() { # <String to Print>, [[<String to Print>] ...]
 	local Line="$@"
-	printf " | %-$(expr $Width - 5)s |\r | $Line\n" 2>/dev/null
+	if [ "$HTML" == "1" ]; then
+		printf "   $Line\n" 2>/dev/null
+	else
+		printf " | %-$(expr $Width - 5)s |\r | $Line\n" 2>/dev/null
+	fi
 }
 
 print_horizontal_ruler() {
@@ -151,8 +201,8 @@ print_machine() {
 	elif [ -e /proc/cpuinfo ]; then
 		Machine=$(awk 'BEGIN{FS="[ \t]+:[ \t]";OFS=""}/machine/{Machine=$2}/Hardware/{Hardware=$2}END{print Machine,(Machine!="" && Hardware!="")?" ":"",Hardware}' /proc/cpuinfo 2>/dev/null)
 	fi
-	print_line 	"Machine: $MachineColor${Machine:-n/a}$NormalColor,"\
-				"Name: $MachineColor${HostName:-n/a}$NormalColor"
+	print_line "${NormalColor}Machine: $MachineColor${Machine:-n/a}$NormalColor,"\
+			"Name: $MachineColor${HostName:-n/a}$NormalColor"
 }
 
 print_times() {
@@ -164,8 +214,10 @@ print_times() {
 }
 
 print_loadavg() {
-	local LoadAvg=$(awk '{printf"'$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor', '$ValueColor'%s'$NormalColor'",$1,$2,$3}' /proc/loadavg 2>/dev/null)
-	print_line "System load: $LoadAvg"
+	print_line "System load:"\
+				"$ValueColor"$(cat /proc/loadavg | cut -d " " -f 1 2>/dev/null)"$NormalColor,"\
+				"$ValueColor"$(cat /proc/loadavg | cut -d " " -f 2 2>/dev/null)"$NormalColor,"\
+				"$ValueColor"$(cat /proc/loadavg | cut -d " " -f 3 2>/dev/null)"$NormalColor"
 }
 
 print_fs_summary() { # <Mount point> <Label>
@@ -429,5 +481,6 @@ print_vpn
 print_extra
 [ "$EndRuler" == "1" ] && print_horizontal_ruler
 [ "$LastErrors" == "1" ] && print_error
+finalize
 exit 0
 # Done.
