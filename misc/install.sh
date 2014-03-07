@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.32 Rafal Drzymala 2013
+# Script version 1.33 Rafal Drzymala 2013
 #
 # Changelog
 #
@@ -38,9 +38,12 @@
 #				Added external script
 #	1.31	RD	Added backup command
 #	1.32	RD	Removed I/O control after post install file removing
+#	1.33	RD	Added variables to image source path
 #
 # Destination /sbin/install.sh
 #
+. /etc/openwrt_release
+
 local CMD=""
 local OFFLINE_POST_INSTALL="1"
 local INCLUDE_INSTALLED="1"
@@ -51,8 +54,6 @@ local BACKUP_FILE=""
 local INSTALL_PATH="/tmp"
 local PACKAGES=""
 local IMAGE_SOURCE=""
-local IMAGE_PREFIX=""
-local IMAGE_SUFFIX=""
 local IMAGE_FILENAME="sysupgrade.bin"
 local POST_INSTALL_SCRIPT="post-installer"
 local POST_INSTALLER="/bin/$POST_INSTALL_SCRIPT.sh"
@@ -125,16 +126,19 @@ package_script_execute() { # <Package> <Script name> <Command>
 	fi
 }
 
-system_board_name() {
+update_path_vars() { # <String to update>
+	local PATH_VARS="$1"
+	local TARGET=$(echo "$DISTRIB_TARGET" | cut -d "/" -f 1)
+	local SUBTARGET=$(echo "$DISTRIB_TARGET" | cut -d "/" -f 2)
 	local BOARD_NAME=$($BIN_CAT /tmp/sysinfo/model | $BIN_TR '[A-Z]' '[a-z]')
 	local BOARD_VER=$($BIN_ECHO "$BOARD_NAME" | $BIN_CUT -d " " -f 3)
 	BOARD_NAME=$($BIN_ECHO "$BOARD_NAME" | $BIN_CUT -d " " -f 2)
-	[ "$BOARD_VER" == "" ] || BOARD_VER="-$BOARD_VER"
-	if [ "$BOARD_NAME$BOARD_VER" == "" ]; then 
-		$BIN_ECHO "Error while getting system board name"
-		exit 1
-	fi
-	$BIN_ECHO "$BOARD_NAME$BOARD_VER"
+	[ -n "$BOARD_VER" ] && BOARD_NAME="$BOARD_NAME-$BOARD_VER"
+	[ -n "$DISTRIB_CODENAME" ] && PATH_VARS=${PATH_VARS//\<CODENAME\>/$DISTRIB_CODENAME}
+	[ -n "$TARGET" ] && PATH_VARS=${PATH_VARS//\<TARGET\>/$TARGET}
+	[ -n "$SUBTARGET" ] && PATH_VARS=${PATH_VARS//\<SUBTARGET\>/$SUBTARGET}
+	[ -n "$BOARD_NAME" ] && PATH_VARS=${PATH_VARS//\<HARDWARE\>/$BOARD_NAME}
+	$BIN_ECHO "$PATH_VARS"
 }
 
 caution_alert() {
@@ -179,17 +183,13 @@ print_help() {
 			"\n\tLocal install directory : '$($BIN_UCI -q get system.@sysupgrade[0].localinstall)'"\
 			"\n\tConfiguration backup direcory : '$($BIN_UCI -q get system.@sysupgrade[0].backupconfig)'"\
 			"\n\tImage source URL : '$($BIN_UCI -q get system.@sysupgrade[0].imagesource)'"\
-			"\n\tImage source prefix : '$($BIN_UCI -q get system.@sysupgrade[0].imageprefix)'"\
-			"\n\tImage source suffix : '$($BIN_UCI -q get system.@sysupgrade[0].imagesuffix)'"\
 			"\n\tRun external script : '$($BIN_UCI -q get system.@sysupgrade[0].runscript)'"\
 			"\n\tPackages: '$($BIN_UCI -q get system.@sysupgrade[0].opkg)'"\
 			"\n\nExamples configuration in /etc/config/system"\
 			"\n\tconfig sysupgrade"\
 			"\n\t\toption localinstall '/install'"\
 			"\n\t\toption backupconfig '/backup'"\
-			"\n\t\toption imagesource 'http://ecco.selfip.net/attitude_adjustment/ar71xx'"\
-			"\n\t\toption imageprefix 'openwrt-ar71xx-generic-'"\
-			"\n\t\toption imagesuffix '-squashfs-sysupgrade.bin'"\
+			"\n\t\toption imagesource 'http://ecco.selfip.net/<CODENAME>/<TARGET>/openwrt-<TARGET>-<SUBTARGET>-<HARDWARE>-squashfs-sysupgrade.bin'"\
 			"\n\t\tlist opkg libusb"\
 			"\n\t\tlist opkg kmod-usb-serial-option"\
 			"\n\t\tlist opkg kmod-usb-net-cdc-ether"\
@@ -198,7 +198,7 @@ print_help() {
 }
 
 initialize() { # <Script parametrs>
-	which_binary echo basename logger chmod uci date ls cat cut tr wc rm mv sync reboot awk grep wget opkg sysupgrade md5sum ping logread gzip
+	which_binary echo basename dirname logger chmod uci date ls cat cut tr wc rm mv sync reboot awk grep wget opkg sysupgrade md5sum ping logread gzip
 	while [ -n "$1" ]; do
 		case "$1" in
 			install|download|sysupgrade|backup) CMD="$1";; 
@@ -244,8 +244,11 @@ initialize() { # <Script parametrs>
 	fi
 	if [ "$CMD" == "download" ] || [ "$CMD" == "sysupgrade" ]; then
 		IMAGE_SOURCE=$($BIN_UCI -q get system.@sysupgrade[0].imagesource)
-		IMAGE_PREFIX=$($BIN_UCI -q get system.@sysupgrade[0].imageprefix)
-		IMAGE_SUFFIX=$($BIN_UCI -q get system.@sysupgrade[0].imagesuffix)
+		local IMAGE_PREFIX=$($BIN_UCI -q get system.@sysupgrade[0].imageprefix)
+		local IMAGE_SUFFIX=$($BIN_UCI -q get system.@sysupgrade[0].imagesuffix)
+		if [ -n "$IMAGE_PREFIX" ] || [ -n "$IMAGE_SUFFIX" ]; then
+			IMAGE_SOURCE="$IMAGE_SOURCE/$IMAGE_PREFIX<HARDWARE>$IMAGE_SUFFIX"
+		fi
 	fi
 	RUN_SCRIPT=$($BIN_UCI -q get system.@sysupgrade[0].runscript)
 	PACKAGES=$($BIN_UCI -q get system.@sysupgrade[0].opkg)
@@ -256,7 +259,7 @@ initialize() { # <Script parametrs>
 			exit 1
 		fi
 	fi
-	$BIN_ECHO "Operation $CMD on $HOST_NAME"
+	$BIN_ECHO "Operation $CMD on $HOST_NAME - $DISTRIB_ID $DISTRIB_RELEASE ($DISTRIB_REVISION)"
 }
 
 update_repository() {
@@ -405,13 +408,13 @@ packages_download() {
 }
 
 image_download() {
-	if [ "$IMAGE_SOURCE" == "" ] || [ "$IMAGE_PREFIX" == "" ] || [ "$IMAGE_SUFFIX" == "" ]; then 
+	if [ "$IMAGE_SOURCE" == "" ]; then 
 		$BIN_ECHO "Image source information is empty."
 		exit 1
 	fi
-	local IMAGE_REMOTE_NAME="$IMAGE_SOURCE/$IMAGE_PREFIX$(system_board_name)$IMAGE_SUFFIX"
+	local IMAGE_REMOTE_NAME="$(update_path_vars $IMAGE_SOURCE)"
 	local IMAGE_LOCAL_NAME="$INSTALL_PATH/$IMAGE_FILENAME"
-	local SUMS_REMOTE_NAME="$IMAGE_SOURCE/md5sums"
+	local SUMS_REMOTE_NAME="$($BIN_DIRNAME $IMAGE_REMOTE_NAME)/md5sums"
 	local SUMS_LOCAL_NAME="$INSTALL_PATH/md5sums"
 	[ -f $IMAGE_LOCAL_NAME ] && $BIN_RM -f $IMAGE_LOCAL_NAME
 	$BIN_ECHO "Downloading system image as $IMAGE_LOCAL_NAME from $IMAGE_REMOTE_NAME ..."	
