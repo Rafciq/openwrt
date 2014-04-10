@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install or download packages and/or sysupgrade.
-# Script version 1.33 Rafal Drzymala 2013
+# Script version 1.34 Rafal Drzymala 2013-2014
 #
 # Changelog
 #
@@ -39,6 +39,7 @@
 #	1.31	RD	Added backup command
 #	1.32	RD	Removed I/O control after post install file removing
 #	1.33	RD	Added variables to image source path
+#	1.34	RD	Added image file and packages files sums calculation
 #
 # Destination /sbin/install.sh
 #
@@ -189,7 +190,7 @@ print_help() {
 			"\n\tconfig sysupgrade"\
 			"\n\t\toption localinstall '/install'"\
 			"\n\t\toption backupconfig '/backup'"\
-			"\n\t\toption imagesource 'http://ecco.selfip.net/<CODENAME>/<TARGET>/openwrt-<TARGET>-<SUBTARGET>-<HARDWARE>-squashfs-sysupgrade.bin'"\
+			"\n\t\toption imagesource 'http://dl.eko.one.pl/<CODENAME>/<TARGET>/openwrt-<TARGET>-<SUBTARGET>-<HARDWARE>-squashfs-sysupgrade.bin'"\
 			"\n\t\tlist opkg libusb"\
 			"\n\t\tlist opkg kmod-usb-serial-option"\
 			"\n\t\tlist opkg kmod-usb-net-cdc-ether"\
@@ -420,6 +421,7 @@ image_download() {
 	$BIN_ECHO "Downloading system image as $IMAGE_LOCAL_NAME from $IMAGE_REMOTE_NAME ..."	
 	$BIN_WGET -O $IMAGE_LOCAL_NAME $IMAGE_REMOTE_NAME
 	check_exit_code
+	[ -f $SUMS_LOCAL_NAME ] && $BIN_RM -f $SUMS_LOCAL_NAME
 	$BIN_ECHO "Downloading images sums as $SUMS_LOCAL_NAME from $SUMS_REMOTE_NAME ..."	
 	$BIN_WGET -O $SUMS_LOCAL_NAME $SUMS_REMOTE_NAME
 	check_exit_code
@@ -440,6 +442,9 @@ image_download() {
 	else
 		$BIN_ECHO "System image is downloaded and checksum is correct."
 	fi
+	$BIN_ECHO "Calculate new checksum to file $SUMS_LOCAL_NAME ..."
+	$BIN_MD5SUM $IMAGE_LOCAL_NAME $($BIN_DIRNAME $IMAGE_LOCAL_NAME)/*.ipk >$SUMS_LOCAL_NAME
+	check_exit_code
 	run_script after_image_downloaded
 }
 
