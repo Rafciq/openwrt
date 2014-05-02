@@ -1,11 +1,12 @@
 #!/bin/sh
-# DDNS update for DYNDNS.org and NO-IP.com
-# Script version 1.02 Rafal Drzymala 2013,2014
+# DDNS update for DYNDNS.org, NO-IP.com, DDNS.pl, DNSDYNAMIC.org
+# Script version 1.03 Rafal Drzymala 2013,2014
 #
 # Changelog
 #	1.00	RD	First stable code
 #	1.01	RD	Added detectip parameter
 #	1.02	RD	Added service parameter
+#	1.03	RD	Added ddns.pl, dnsdynamic.org
 #
 # Destination /etc/hotplug.d/iface/90-ddns-update
 #
@@ -36,6 +37,10 @@ do_ddns() {
 				service_url="members.dyndns.org/nic/update";;
 			no-ip.com)
 				service_url="dynupdate.no-ip.com/nic/update";;
+			ddns.pl)
+				service_url="updates.ddns.pl/update_dyndns";;
+			dnsdynamic.org)
+				service_url="www.dnsdynamic.org/api/";;
 			*)
 				logger -p user.notice -t "ddns-update[$service]" "Unknown service: $service"
 				return;;
