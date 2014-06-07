@@ -1,12 +1,15 @@
 #!/bin/sh
 # DDNS update for DYNDNS.org, NO-IP.com, DDNS.pl, DNSDYNAMIC.org
-# Script version 1.03 Rafal Drzymala 2013,2014
+# Script version 1.04 Rafal Drzymala 2013,2014
 #
 # Changelog
 #	1.00	RD	First stable code
 #	1.01	RD	Added detectip parameter
 #	1.02	RD	Added service parameter
 #	1.03	RD	Added ddns.pl, dnsdynamic.org
+#	1.04	RD	Added optional parameter to run script manually.
+#				Prevent for inactive DDNS record.
+#				ex. /etc/hotplug.d/iface/90-ddns-update set 8.8.8.8
 #
 # Destination /etc/hotplug.d/iface/90-ddns-update
 #
@@ -45,12 +48,15 @@ do_ddns() {
 				logger -p user.notice -t "ddns-update[$service]" "Unknown service: $service"
 				return;;
 		esac
-		if [ $detectip == 1 ]; then
+		if [ -n "$2" ]; then
+			wan_ip="set to $2"
+			myip="&myip=$2"
+		elif [ $detectip == 1 ]; then
 			wan_ip="detect IP"
 			myip=""
 		else
 			network_get_ipaddr wan_ip $wan_if
-			if [ "$wan_ip" == "" ]; then
+			if [ -z "$wan_ip" ]; then
 				logger -p user.notice -t "ddns-update[$service]" "Unable to get interface $wan_if IP address."
 				return
 			fi
@@ -85,11 +91,15 @@ do_ddns() {
 	fi
 }
 
-network_find_wan wan_if
-[ "$wan_if" == "" ] && exit 0
-if [ "$INTERFACE" == "$wan_if" ] && [ "$ACTION" == "ifup" ]; then
-	config_load system
-	config_foreach do_ddns ddns
+# Main rutine
+local param_ip
+[ "$1" == "set" ] && [ -n "$2" ] && param_ip="$2"
+if [ "$ACTION" == "ifup" ] || [ -n "$1" ]; then
+	network_find_wan wan_if
+	if [[ -n "$wan_if"  && \( "$INTERFACE" == "$wan_if" ||  -n "$1" \) ]]; then
+		config_load system
+		config_foreach do_ddns ddns "$param_ip"
+	fi
 fi
-exit 0
+#exit 0
 # Done.
