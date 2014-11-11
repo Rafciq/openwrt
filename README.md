@@ -3,8 +3,10 @@ Something to expand OpenWRT
 
 Abstract
 --------
-Few small scripts to make your task on router will more easy.
+Few small scripts to make your task on router more easily.
 
-* network
+Content
+-------
 * openvpn
+* network
 * misc
