@@ -21,7 +21,7 @@ Example /etc/openvpn/auth
 ```
 Use command below to easy append to file /etc/openvpn/auth
 ```shell
-read -p "Login:" Login;read -p "Password:" Password;[ -n "$Login" ] && [ -n "$Password" ] && echo -e "$Login\t$(echo $Password|md5sum|cut -f 1 -d ' ')">>/etc/openvpn/auth
+read -p "Login:" Login;read -p "Password:" Password;[ -n "$Login" ] && [ -n "$Password" ] && echo -e "$Login\t$(echo $Password|openssl dgst -sha256|cut -f 2 -d ' ')">>/etc/openvpn/auth
 ```
 
 * Change OpenVPN server configuration. You can use two method to pass credentials to script. First via file ad second via environment variable.

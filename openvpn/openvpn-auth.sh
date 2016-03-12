@@ -48,7 +48,7 @@ if [ "$script_type" == "user-pass-verify" ]; then
 		logger -p user.error -t $PNAME "$PEER Password isn't set"
 		exit 1
 	fi
-	local hashinput=$(echo "$password" | md5sum | cut -d " " -f 1)
+	local hashinput=$(echo "$password" | openssl dgst -sha256 | cut -d " " -f 2)
 	if [ "$hashinput" == "" ]; then
 		logger -p user.error -t $PNAME "$PEER Hash from password isn't set"
 		exit 1
