@@ -15,9 +15,9 @@ How do it
 * Make client credentials list in file /etc/openvpn/auth. Each line contains login name and hash from password.
 Example /etc/openvpn/auth
 ```
-	Client1 d577273ff885c3f84dadb8578bb41399
-	Client2 f5ac8127b3b6b85cdc13f237c6005d80
-	Smith   9954987819a9e85b2aae8c04803f6b26
+	Client1 948fe603f61dc036b5c596dc09fe3ce3f3d30dc90f024c85f3c82db2ccab679d
+	Client2 3f455143e75d1e7fd659dea57023496da3bd9f2f8908d1e2ac32641cd819d3e3
+	Smith   3f455143e75d1e7fd659dea57023496da3bd9f2f8908d1e2ac32641cd819d3e3
 ```
 Use command below to easy append to file /etc/openvpn/auth
 ```shell
