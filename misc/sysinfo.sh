@@ -25,24 +25,24 @@
 #	1.20	RD	Zmiana wy¶wietlania informacji o sprzêcie
 #	1.21	RD	Dopasowyanie szeroko¶ci do zawarto¶ci /etc/banner
 #	1.22	RD	Dodanie wyœwietlania w HTML-u
-#
+#	1.23	RD  Poprawki w wyœwietlaniu LAN-DHCP i WLAN
 # Destination /sbin/sysinfo.sh
 #
 . /usr/share/libubox/jshn.sh
 
-local Width=0
-local StartRuler="1"
-local EndRuler="1"
-local LastErrors="1"
-local NormalColor=""
-local MachineColor=""
-local ValueColor=""
-local AddrColor=""
-local RXTXColor=""
-local ErrorColor=""
-local ExtraName=""
-local ExtraValue=""
-local HTML=""
+Width=0
+StartRuler="1"
+EndRuler="1"
+LastErrors="1"
+NormalColor=""
+MachineColor=""
+ValueColor=""
+AddrColor=""
+RXTXColor=""
+ErrorColor=""
+ExtraName=""
+ExtraValue=""
+HTML=""
 
 initialize() { # <Script Parameters>
 	local ColorMode="c"
@@ -389,7 +389,7 @@ print_lan() {
 							[ "$IP6" != "" ] && [ "$Subnet6" != "" ] && IP6="$IP6/$Subnet6"
 						fi
 					fi
-					local DHCPConfig=$(uci -q show dhcp | grep .interface=$Device | cut -d. -f2)
+					local DHCPConfig=$(uci -q show dhcp | grep -E .interface=\.?$Device\.? | cut -d. -f2)
 					if [ "$DHCPConfig" != "" ] && [ "$(uci -q get dhcp.$DHCPConfig.ignore)" != "1" ]; then
 						local DHCPStart=$(uci -q get dhcp.$DHCPConfig.start)
 						local DHCPLimit=$(uci -q get dhcp.$DHCPConfig.limit)
@@ -404,35 +404,66 @@ print_lan() {
 }
 
 print_wlan() {
-	local Iface
-	for Iface in $(uci -q show wireless | grep device=radio | cut -f2 -d.); do
-		local Device=$(uci -q get wireless.$Iface.device)
-		local SSID=$(uci -q get wireless.$Iface.ssid)
-		local IfaceDisabled=$(uci -q get wireless.$Iface.disabled)
-		local DeviceDisabled=$(uci -q get wireless.$Device.disabled)
-		if [ -n "$SSID" ] && [ "$IfaceDisabled" != "1" ] && [ "$DeviceDisabled" != "1" ]; then
-			local Mode=$(uci -q -P /var/state get wireless.$Iface.mode)
-			local Channel=$(uci -q get wireless.$Device.channel)
-			local RadioIface=$(uci -q -P /var/state get wireless.$Iface.ifname)
-			local Connection="Down"
-			if [ -n "$RadioIface" ]; then
-				if [ "$Mode" == "ap" ]; then
-					Connection="$(iw dev $RadioIface station dump | grep Station | wc -l 2>/dev/null)"
-				else
-					Connection="$(iw dev $RadioIface link | awk 'BEGIN{FS=": ";Signal="";Bitrate=""} $1~/signal/ {Signal=$2} $1~/tx bitrate/ {Bitrate=$2}END{print Signal" "Bitrate}' 2>/dev/null)"
+	local Status="$(ubus call network.wireless status 2>/dev/null)"
+	if [ "$Status" != "" ]; then
+		local Device=""
+		json_load "${Status:-{}}"
+		json_get_keys Radios
+		for Device in $Radios; do
+			local RadioUp=""
+			local DeviceDisabled=""
+			local Channel=""
+			local Interfaces=""
+			local Interface=""
+			json_select "$Device"
+			json_get_var RadioUp up
+			json_get_var DeviceDisabled disabled
+			json_select "config"
+			json_get_var Channel channel
+			json_select ".."
+			json_select "interfaces"
+			json_get_keys Interfaces
+			for Interface in $Interfaces; do
+				local Iface=""
+				local RadioIface=""
+				local SSID=""
+				local Mode=""
+				json_select $Interface
+				json_get_var Iface section
+				json_get_var RadioIface ifname
+				json_select "config" 
+				json_get_var SSID ssid
+				json_get_var Mode mode
+				local IfaceDisabled=$(uci -q get wireless.$Iface.disabled)
+				if [ -n "$SSID" ] && [ "$RadioUp" == "1" ] && [ "$IfaceDisabled" != "1" ] && [ "$DeviceDisabled" != "1" ]; then
+					local Mode=$(uci -q -P /var/state get wireless.$Iface.mode)
+					local Connection="Down"
+					if [ -n "$RadioIface" ]; then
+						if [ "$Mode" == "ap" ]; then
+							Connection="$(iw dev $RadioIface station dump | grep Station | wc -l 2>/dev/null)"
+						else
+							Connection="$(iw dev $RadioIface link | awk 'BEGIN{FS=": ";Signal="";Bitrate=""} $1~/signal/ {Signal=$2} $1~/tx bitrate/ {Bitrate=$2}END{print Signal" "Bitrate}' 2>/dev/null)"
+						fi
+						if [ "$Channel" == "auto" ]; then
+							Channel="$(iw dev $RadioIface info | grep channel | cut -f2 -d' ')"
+						fi
+					fi
+					if [ "$Mode" == "ap" ]; then
+						print_line	"WLAN: $ValueColor$SSID$NormalColor($Mode),"\
+									"ch: $ValueColor${Channel:-n/a}$NormalColor,"\
+									"conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
+					else
+						print_line	"WLAN: $ValueColor$SSID$NormalColor($Mode),"\
+									"ch: $ValueColor${Channel:-n/a}$NormalColor"
+						print_line	"conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
+					fi
 				fi
-			fi
-			if [ "$Mode" == "ap" ]; then
-				print_line	"WLAN: $ValueColor$SSID$NormalColor($Mode),"\
-							"ch: $ValueColor${Channel:-n/a}$NormalColor,"\
-							"conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
-			else
-				print_line	"WLAN: $ValueColor$SSID$NormalColor($Mode),"\
-							"ch: $ValueColor${Channel:-n/a}$NormalColor"
-				print_line	"conn: $ValueColor$Connection$NormalColor$(device_rx_tx $RadioIface)"
-			fi
-		fi
-	done
+				json_select ".."
+				json_select ".."
+			done
+			json_select
+		done
+	fi
 }
 
 print_vpn() {
